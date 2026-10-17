@@ -1,8 +1,11 @@
 import "dotenv/config";
+import { setDefaultResultOrder } from "node:dns";
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import { prisma } from "@o-radar/db";
+
+setDefaultResultOrder("ipv4first");
 
 const hasGoogleCredentials = Boolean(
   process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET,
