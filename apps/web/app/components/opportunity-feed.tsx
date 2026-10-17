@@ -1,6 +1,11 @@
 "use client";
 
-import { archiveOpportunity, promoteOpportunityToLead } from "../actions";
+import {
+  archiveOpportunity,
+  promoteOpportunityToLead,
+  runDiscovery,
+  type HuntSource,
+} from "../actions";
 import {
   ArrowUpRight,
   Archive,
@@ -12,6 +17,7 @@ import {
   X,
 } from "lucide-react";
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 
 type Opportunity = {
   id: string;
@@ -42,9 +48,34 @@ export function OpportunityFeed({
 }) {
   const [selected, setSelected] = useState<Opportunity | null>(null);
   const [filter, setFilter] = useState("");
-  const filtered = opportunities.filter((item) =>
-    item.title.toLowerCase().includes(filter.toLowerCase()),
+  const [source, setSource] = useState<HuntSource>("all");
+  const [huntMessage, setHuntMessage] = useState("");
+  const [isHunting, startHunt] = useTransition();
+  const router = useRouter();
+  const filtered = opportunities.filter(
+    (item) =>
+      item.title.toLowerCase().includes(filter.toLowerCase()) &&
+      (source === "all" ||
+        (source === "github" && item.source === "GITHUB_ISSUE") ||
+        (source === "rss" && item.source === "RSS_FEED")),
   );
+
+  function hunt() {
+    setHuntMessage("");
+    startHunt(async () => {
+      try {
+        const result = await runDiscovery(source);
+        const discovered =
+          (result.github?.discovered ?? 0) + (result.rss?.discovered ?? 0);
+        const skipped =
+          (result.github?.skipped ?? 0) + (result.rss?.skipped ?? 0);
+        setHuntMessage(`${discovered} new · ${skipped} already tracked`);
+        router.refresh();
+      } catch (error) {
+        setHuntMessage(error instanceof Error ? error.message : "Hunt failed");
+      }
+    });
+  }
 
   return (
     <>
@@ -58,9 +89,29 @@ export function OpportunityFeed({
             value={filter}
           />
         </div>
-        <span className="toolbar-note">
-          <GitPullRequest size={15} /> GitHub issues
-        </span>
+        <div className="feed-controls">
+          <select
+            aria-label="Filter by source"
+            className="source-select"
+            onChange={(event) => setSource(event.target.value as HuntSource)}
+            value={source}
+          >
+            <option value="all">All sources</option>
+            <option value="github">GitHub issues</option>
+            <option value="rss">RSS feeds</option>
+          </select>
+          <button
+            className="hunt-button"
+            disabled={isHunting}
+            onClick={hunt}
+            type="button"
+          >
+            <Radar size={15} /> {isHunting ? "Hunting..." : "Run hunt"}
+          </button>
+          {huntMessage ? (
+            <span className="hunt-message">{huntMessage}</span>
+          ) : null}
+        </div>
       </div>
       <div className="opportunity-list">
         {filtered.length === 0 ? (

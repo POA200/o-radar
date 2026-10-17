@@ -45,6 +45,13 @@ h1 { font-size: clamp(32px, 4vw, 46px); line-height: 1; letter-spacing: -0.045em
 .search-box input { width: 100%; border: 0; outline: 0; background: transparent; color: var(--text); font-size: 12px; }
 .search-box input::placeholder { color: var(--faint); }
 .toolbar-note { color: var(--faint); display: flex; align-items: center; gap: 7px; font-family: var(--font-mono); font-size: 11px; }
+.feed-controls { display: flex; align-items: center; gap: 8px; }
+.source-select { height: 38px; border: 1px solid var(--line); border-radius: 5px; background: var(--surface); color: var(--muted); padding: 0 10px; font-family: var(--font-mono); font-size: 10px; }
+.source-select:focus { outline: 1px solid var(--accent); }
+.hunt-button { height: 38px; display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--accent); border-radius: 5px; padding: 0 13px; background: var(--accent); color: var(--background); font-size: 11px; font-weight: 650; }
+.hunt-button:hover { background: #a2e4cd; }
+.hunt-button:disabled { cursor: wait; opacity: .6; }
+.hunt-message { color: var(--muted); font-family: var(--font-mono); font-size: 10px; white-space: nowrap; }
 .opportunity-list { display: grid; gap: 8px; }
 .opportunity-card { min-height: 126px; display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; align-items: center; gap: 20px; border: 1px solid var(--line); background: var(--surface); padding: 20px 22px; transition: border-color .18s, background .18s, transform .18s; }
 .opportunity-card:hover { border-color: var(--line-bright); background: var(--surface-raised); transform: translateY(-1px); }
@@ -170,6 +177,8 @@ h1 { font-size: clamp(32px, 4vw, 46px); line-height: 1; letter-spacing: -0.045em
   .heading-stat strong { font-size: 24px; }
   .feed-toolbar { align-items: stretch; flex-direction: column; gap: 12px; }
   .search-box { width: 100%; }
+  .feed-controls { flex-wrap: wrap; }
+  .source-select, .hunt-button { flex: 1; }
   .opportunity-card { grid-template-columns: 42px minmax(0, 1fr); gap: 12px; padding: 16px; }
   .card-score { grid-row: span 2; }
   .card-actions { grid-column: 2; justify-content: start; }

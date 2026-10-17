@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { PrismaClient } from "@prisma/client";
 import { XMLParser } from "fast-xml-parser";
-import { prisma as defaultPrisma } from "../index.js";
+import { prisma as defaultPrisma } from "@o-radar/db";
 
 const SOURCE = "RSS_FEED" as const;
 

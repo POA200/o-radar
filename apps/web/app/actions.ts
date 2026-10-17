@@ -1,9 +1,33 @@
 "use server";
 
 import { prisma } from "@o-radar/db";
+import { GitHubScraper } from "@o-radar/db/scrapers/github";
+import { RssScraper } from "@o-radar/db/scrapers/rss";
 import { revalidatePath } from "next/cache";
+import { requireOnboardedUser } from "../src/require-user";
 
 type LeadStatus = "DISCOVERED" | "QUALIFIED" | "CONTACTED" | "CONVERTED" | "ARCHIVED";
+
+export type HuntSource = "github" | "rss" | "all";
+
+export async function runDiscovery(source: HuntSource = "all") {
+  await requireOnboardedUser();
+  const results = {
+    github: null as Awaited<ReturnType<GitHubScraper["run"]>> | null,
+    rss: null as Awaited<ReturnType<RssScraper["run"]>> | null,
+  };
+
+  if (source === "github" || source === "all") {
+    results.github = await new GitHubScraper().run(10);
+  }
+
+  if (source === "rss" || source === "all") {
+    results.rss = await new RssScraper().run();
+  }
+
+  revalidatePath("/");
+  return results;
+}
 
 async function getAuthor(opportunityId: string) {
   const evidence = await prisma.evidence.findFirst({

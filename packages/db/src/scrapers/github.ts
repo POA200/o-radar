@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { PrismaClient } from "@prisma/client";
-import { prisma as defaultPrisma } from "../index.js";
+import { prisma as defaultPrisma } from "@o-radar/db";
 
 const GITHUB_API_URL = "https://api.github.com";
 const SOURCE = "GITHUB_ISSUE" as const;
