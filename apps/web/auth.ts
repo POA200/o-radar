@@ -10,6 +10,8 @@ const hasGoogleCredentials = Boolean(
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   secret: process.env.AUTH_SECRET,
+  trustHost: true,
+  debug: process.env.NODE_ENV !== "production",
   adapter: PrismaAdapter(prisma),
   session: { strategy: "database" },
   providers: hasGoogleCredentials
