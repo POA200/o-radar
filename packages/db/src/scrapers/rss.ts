@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { Prisma, PrismaClient } from "@prisma/client";
+import type { PrismaClient } from "@prisma/client";
 import { XMLParser } from "fast-xml-parser";
 import { prisma as defaultPrisma } from "../index.js";
 
@@ -165,14 +165,14 @@ export class RssScraper {
       data: {
         opportunityId: opportunity.id,
         type: "RSS_ITEM",
-        rawPayload: {
+        rawPayload: JSON.parse(JSON.stringify({
           source: SOURCE,
           feedUrl: item.feedUrl,
           feedTitle: item.feedTitle ?? null,
           author: item.author ?? null,
           publishedAt: item.publishedAt ?? null,
           item: item.rawPayload,
-        } as Prisma.InputJsonObject,
+        })),
       },
     });
 
