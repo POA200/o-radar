@@ -15,7 +15,7 @@
     "db:studio": "prisma studio",
     "test:github": "tsx ../../scripts/test-github-scraper.ts",
     "test:rss": "tsx ../../scripts/test-rss-scraper.ts",
-    "build": "tsc --noEmit",
+    "build": "prisma generate && tsc --noEmit",
     "check-types": "tsc --noEmit"
   },
   "dependencies": {
