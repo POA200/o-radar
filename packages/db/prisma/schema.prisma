@@ -1,0 +1,133 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id                 String    @id @default(cuid())
+  name               String?
+  email              String?   @unique
+  emailVerified      DateTime?
+  image              String?
+  niche              String?
+  targetRoles        String[]  @default([])
+  targetChains      String[]  @default([])
+  skills             String[]  @default([])
+  cvText             String?   @db.Text
+  portfolioUrl       String?
+  githubUrl          String?
+  onboardingComplete Boolean   @default(false)
+  accounts           Account[]
+  sessions           Session[]
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+}
+
+model Account {
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+  user              User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+enum LeadStatus {
+  DISCOVERED
+  QUALIFIED
+  CONTACTED
+  CONVERTED
+  ARCHIVED
+}
+
+enum OpportunitySource {
+  GITHUB_ISSUE
+  GITHUB_DISCUSSION
+  ECOSYSTEM_FORUM
+  RSS_FEED
+  CUSTOM_SCRAPER
+}
+
+model Project {
+  id             String        @id @default(cuid())
+  name           String
+  description    String?
+  targetKeywords String[]      @default([])
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  opportunities  Opportunity[]
+}
+
+model Opportunity {
+  id         String            @id @default(cuid())
+  projectId  String?
+  project    Project?          @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  source     OpportunitySource
+  nativeId   String
+  hash       String            @unique
+  title      String
+  url        String
+  content    String            @db.Text
+  score      Int               @default(0)
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+  evidences  Evidence[]
+  leads      Lead[]
+
+  @@index([source, nativeId])
+}
+
+model Evidence {
+  id            String      @id @default(cuid())
+  opportunityId String
+  opportunity   Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  type          String
+  rawPayload    Json
+  capturedAt    DateTime    @default(now())
+}
+
+model Lead {
+  id            String      @id @default(cuid())
+  opportunityId String
+  opportunity   Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  handle        String
+  platform      String
+  profileUrl    String?
+  contactEmail  String?
+  status        LeadStatus  @default(DISCOVERED)
+  notes         String?     @db.Text
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@unique([opportunityId, platform, handle])
+}
