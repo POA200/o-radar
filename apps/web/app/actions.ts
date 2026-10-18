@@ -5,8 +5,10 @@ import { GitHubScraper } from "@o-radar/db/scrapers/github";
 import { RssScraper } from "@o-radar/db/scrapers/rss";
 import { revalidatePath } from "next/cache";
 import { requireOnboardedUser } from "../src/require-user";
+import { signOut } from "../auth";
+import { z } from "zod";
 
-type LeadStatus = "DISCOVERED" | "QUALIFIED" | "CONTACTED" | "CONVERTED" | "ARCHIVED";
+type LeadStatus = "DISCOVERED" | "RESEARCHING" | "QUALIFIED" | "READY_TO_CONTACT" | "CONTACTED" | "REPLIED" | "IN_PROGRESS" | "WON" | "LOST" | "CONVERTED" | "ARCHIVED";
 
 export type HuntSource = "github" | "rss" | "all";
 
@@ -26,14 +28,20 @@ export async function runDiscovery(source: HuntSource = "all") {
   }
 
   revalidatePath("/");
+  revalidatePath("/discover");
+  revalidatePath("/leads");
+  revalidatePath("/saved");
   return results;
 }
 
-async function getAuthor(opportunityId: string) {
-  const evidence = await prisma.evidence.findFirst({
-    where: { opportunityId },
-    orderBy: { capturedAt: "desc" },
+async function getAuthorAndPlatform(opportunityId: string) {
+  const opportunity = await prisma.opportunity.findUnique({
+    where: { id: opportunityId },
+    include: { evidences: { orderBy: { capturedAt: "desc" }, take: 1 } },
   });
+
+  const platform = opportunity?.source === "RSS_FEED" ? "RSS" : "GITHUB";
+  const evidence = opportunity?.evidences[0];
   const rawPayload = evidence?.rawPayload;
 
   if (rawPayload && typeof rawPayload === "object" && !Array.isArray(rawPayload)) {
@@ -45,47 +53,62 @@ async function getAuthor(opportunityId: string) {
 
       if (typeof handle === "string") {
         return {
+          platform,
           handle,
           profileUrl: typeof profileUrl === "string" ? profileUrl : undefined,
         };
       }
+    } else if (typeof author === "string" && author.trim()) {
+      return {
+        platform,
+        handle: author.trim(),
+        profileUrl: undefined,
+      };
     }
   }
 
-  return { handle: `opportunity-${opportunityId.slice(-8)}` };
+  return {
+    platform,
+    handle: `opportunity-${opportunityId.slice(-8)}`,
+  };
 }
 
 export async function promoteOpportunityToLead(opportunityId: string) {
-  const author = await getAuthor(opportunityId);
+  const user = await requireOnboardedUser();
+  const contact = await getAuthorAndPlatform(opportunityId);
   const existingLead = await prisma.lead.findFirst({
-    where: { opportunityId, platform: "GITHUB", handle: author.handle },
+    where: { userId: user.id, opportunityId, handle: contact.handle },
   });
 
   if (existingLead) {
     await prisma.lead.update({
       where: { id: existingLead.id },
-      data: { status: "QUALIFIED", profileUrl: author.profileUrl },
+      data: { status: "QUALIFIED", profileUrl: contact.profileUrl },
     });
   } else {
     await prisma.lead.create({
       data: {
         opportunityId,
-        handle: author.handle,
-        platform: "GITHUB",
-        profileUrl: author.profileUrl,
+        handle: contact.handle,
+        platform: contact.platform,
+        profileUrl: contact.profileUrl,
         status: "QUALIFIED",
+        userId: user.id,
       },
     });
   }
 
   revalidatePath("/");
+  revalidatePath("/discover");
   revalidatePath("/leads");
+  revalidatePath("/saved");
 }
 
 export async function archiveOpportunity(opportunityId: string) {
-  const author = await getAuthor(opportunityId);
+  const user = await requireOnboardedUser();
+  const contact = await getAuthorAndPlatform(opportunityId);
   const existingLead = await prisma.lead.findFirst({
-    where: { opportunityId, platform: "GITHUB", handle: author.handle },
+    where: { userId: user.id, opportunityId, handle: contact.handle },
   });
 
   if (existingLead) {
@@ -94,24 +117,102 @@ export async function archiveOpportunity(opportunityId: string) {
     await prisma.lead.create({
       data: {
         opportunityId,
-        handle: author.handle,
-        platform: "GITHUB",
-        profileUrl: author.profileUrl,
+        handle: contact.handle,
+        platform: contact.platform,
+        profileUrl: contact.profileUrl,
         status: "ARCHIVED",
+        userId: user.id,
       },
     });
   }
 
   revalidatePath("/");
+  revalidatePath("/discover");
   revalidatePath("/leads");
+  revalidatePath("/saved");
 }
 
 export async function updateLeadStatus(leadId: string, status: LeadStatus) {
-  await prisma.lead.update({ where: { id: leadId }, data: { status } });
+  const user = await requireOnboardedUser();
+  await prisma.lead.updateMany({
+    where: { id: leadId, userId: user.id },
+    data: {
+      status,
+      ...(status === "CONTACTED" ? { lastContactedAt: new Date() } : {}),
+    },
+  });
+  revalidatePath("/");
+  revalidatePath("/discover");
   revalidatePath("/leads");
+  revalidatePath("/saved");
 }
 
 export async function updateLeadNotes(leadId: string, notes: string) {
-  await prisma.lead.update({ where: { id: leadId }, data: { notes: notes.trim() || null } });
+  const user = await requireOnboardedUser();
+  await prisma.lead.updateMany({
+    where: { id: leadId, userId: user.id },
+    data: { notes: notes.trim() || null },
+  });
   revalidatePath("/leads");
+  revalidatePath("/saved");
+}
+
+export async function unsaveOpportunity(opportunityId: string) {
+  const user = await requireOnboardedUser();
+  await prisma.lead.updateMany({
+    where: { userId: user.id, opportunityId, status: { not: "ARCHIVED" } },
+    data: { status: "DISCOVERED" },
+  });
+  revalidatePath("/");
+  revalidatePath("/discover");
+  revalidatePath("/leads");
+  revalidatePath("/saved");
+}
+
+const profileSchema = z.object({
+  niche: z.string().trim().min(2).max(160),
+  roles: z.array(z.string()).default([]),
+  chains: z.array(z.string()).default([]),
+  skills: z.array(z.string()).default([]),
+  portfolioUrl: z.string().url().optional().or(z.literal("")),
+  githubUrl: z.string().url().optional().or(z.literal("")),
+  cvText: z.string().trim().max(20000).optional(),
+});
+
+export async function updateUserProfile(formData: FormData) {
+  const user = await requireOnboardedUser();
+
+  const parsed = profileSchema.parse({
+    niche: formData.get("niche"),
+    roles: formData.getAll("roles"),
+    chains: formData.getAll("chains"),
+    skills: String(formData.get("skills") ?? "")
+      .split(/[,;\n]+/)
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean),
+    portfolioUrl: formData.get("portfolioUrl"),
+    githubUrl: formData.get("githubUrl"),
+    cvText: formData.get("cvText"),
+  });
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      niche: parsed.niche,
+      targetRoles: parsed.roles,
+      targetChains: parsed.chains,
+      skills: parsed.skills,
+      portfolioUrl: parsed.portfolioUrl || null,
+      githubUrl: parsed.githubUrl || null,
+      cvText: parsed.cvText || null,
+    },
+  });
+
+  revalidatePath("/");
+  revalidatePath("/discover");
+  revalidatePath("/settings");
+}
+
+export async function handleSignOut() {
+  await signOut({ redirectTo: "/signin" });
 }

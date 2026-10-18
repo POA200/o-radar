@@ -9,17 +9,25 @@ const onboardingSchema = z.object({
   niche: z.string().trim().min(2).max(160),
   roles: z.array(z.string()).default([]),
   chains: z.array(z.string()).default([]),
+  skills: z.array(z.string()).default([]),
   portfolioUrl: z.string().url().optional().or(z.literal("")),
   githubUrl: z.string().url().optional().or(z.literal("")),
   cvText: z.string().trim().max(20000).optional(),
 });
 
 export async function completeOnboarding(formData: FormData) {
+  const rawSkills = String(formData.get("skills") ?? "");
+  const skillsArray = rawSkills
+    .split(/[,;\n]+/)
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+
   const parsed = onboardingSchema.parse({
     email: formData.get("email"),
     niche: formData.get("niche"),
     roles: formData.getAll("roles"),
     chains: formData.getAll("chains"),
+    skills: skillsArray,
     portfolioUrl: formData.get("portfolioUrl"),
     githubUrl: formData.get("githubUrl"),
     cvText: formData.get("cvText"),
@@ -31,6 +39,7 @@ export async function completeOnboarding(formData: FormData) {
       niche: parsed.niche,
       targetRoles: parsed.roles,
       targetChains: parsed.chains,
+      skills: parsed.skills,
       portfolioUrl: parsed.portfolioUrl || null,
       githubUrl: parsed.githubUrl || null,
       cvText: parsed.cvText || null,

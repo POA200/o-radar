@@ -60,6 +60,16 @@ export default async function OnboardingPage() {
             required
           />
         </label>
+        <label className="field field-wide">
+          <span>
+            Core skills <small>comma separated, optional</small>
+          </span>
+          <input
+            defaultValue={user.skills?.join(", ") ?? ""}
+            name="skills"
+            placeholder="e.g. Solidity, React, Tailwind, Next.js, Figma, ZK"
+          />
+        </label>
         <fieldset className="field-group">
           <legend>What kind of work are you open to?</legend>
           <div className="choice-grid">

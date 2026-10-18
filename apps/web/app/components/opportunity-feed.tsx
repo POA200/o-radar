@@ -26,6 +26,8 @@ type Opportunity = {
   url: string;
   content: string;
   score: number;
+  matchScore: number;
+  matchReasons: string[];
   createdAt: string;
   keywords: string[];
   evidence: unknown;
@@ -162,8 +164,9 @@ function OpportunityCard({
   return (
     <article className="opportunity-card">
       <div className="card-score">
-        <span>{opportunity.score || "--"}</span>
-        <small>score</small>
+        <span>{opportunity.matchScore}</span>
+        <small>match / 100</small>
+        <span className="signal-score">{opportunity.score} signal</span>
       </div>
       <div className="opportunity-main">
         <div className="card-meta">
@@ -177,6 +180,13 @@ function OpportunityCard({
           {opportunity.title}
           <ArrowUpRight size={16} />
         </button>
+        <div className="match-reasons">
+          {opportunity.matchReasons.map((reason) => (
+            <span className="match-reason" key={reason}>
+              {reason}
+            </span>
+          ))}
+        </div>
         <div className="keyword-row">
           {(opportunity.keywords.length
             ? opportunity.keywords

@@ -198,23 +198,22 @@ export class GitHubScraper {
     });
 
     if (issue.user) {
-      await this.prisma.lead.upsert({
-        where: {
-          opportunityId_platform_handle: {
-            opportunityId: opportunity.id,
-            platform: "GITHUB",
-            handle: issue.user.login,
-          },
-        },
-        update: { profileUrl: issue.user.html_url },
-        create: {
-          opportunityId: opportunity.id,
-          handle: issue.user.login,
-          platform: "GITHUB",
-          profileUrl: issue.user.html_url,
-          status: "DISCOVERED",
-        },
+      const existingLead = await this.prisma.lead.findFirst({
+        where: { userId: null, opportunityId: opportunity.id, platform: "GITHUB", handle: issue.user.login },
       });
+      if (existingLead) {
+        await this.prisma.lead.update({ where: { id: existingLead.id }, data: { profileUrl: issue.user.html_url } });
+      } else {
+        await this.prisma.lead.create({
+          data: {
+            opportunityId: opportunity.id,
+            handle: issue.user.login,
+            platform: "GITHUB",
+            profileUrl: issue.user.html_url,
+            status: "DISCOVERED",
+          },
+        });
+      }
     }
 
     return "created";

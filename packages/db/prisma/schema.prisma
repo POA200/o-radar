@@ -21,6 +21,7 @@ model User {
   portfolioUrl       String?
   githubUrl          String?
   onboardingComplete Boolean   @default(false)
+  leads              Lead[]
   accounts           Account[]
   sessions           Session[]
   createdAt          DateTime  @default(now())
@@ -64,8 +65,14 @@ model VerificationToken {
 
 enum LeadStatus {
   DISCOVERED
+  RESEARCHING
   QUALIFIED
+  READY_TO_CONTACT
   CONTACTED
+  REPLIED
+  IN_PROGRESS
+  WON
+  LOST
   CONVERTED
   ARCHIVED
 }
@@ -118,6 +125,8 @@ model Evidence {
 
 model Lead {
   id            String      @id @default(cuid())
+  userId        String?
+  user          User?       @relation(fields: [userId], references: [id], onDelete: Cascade)
   opportunityId String
   opportunity   Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
   handle        String
@@ -126,8 +135,13 @@ model Lead {
   contactEmail  String?
   status        LeadStatus  @default(DISCOVERED)
   notes         String?     @db.Text
+  priority      Int         @default(0)
+  savedAt       DateTime    @default(now())
+  lastContactedAt DateTime?
+  nextFollowUpAt DateTime?
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
 
-  @@unique([opportunityId, platform, handle])
+  @@unique([userId, opportunityId, platform, handle])
+  @@index([userId, status])
 }

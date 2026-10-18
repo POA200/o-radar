@@ -177,22 +177,19 @@ export class RssScraper {
     });
 
     if (item.author) {
-      await this.prisma.lead.upsert({
-        where: {
-          opportunityId_platform_handle: {
-            opportunityId: opportunity.id,
-            platform: "RSS",
-            handle: item.author,
-          },
-        },
-        update: {},
-        create: {
-          opportunityId: opportunity.id,
-          handle: item.author,
-          platform: "RSS",
-          status: "DISCOVERED",
-        },
+      const existingLead = await this.prisma.lead.findFirst({
+        where: { userId: null, opportunityId: opportunity.id, platform: "RSS", handle: item.author },
       });
+      if (!existingLead) {
+        await this.prisma.lead.create({
+          data: {
+            opportunityId: opportunity.id,
+            handle: item.author,
+            platform: "RSS",
+            status: "DISCOVERED",
+          },
+        });
+      }
     }
 
     return "created";
