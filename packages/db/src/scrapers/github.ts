@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { PrismaClient } from "@prisma/client";
 import { prisma as defaultPrisma } from "@o-radar/db";
+import { classifyExternalRecord, isRelevantGitHubIssue, parsePublishedDate } from "@o-radar/db/scrapers/normalization";
 
 const GITHUB_API_URL = "https://api.github.com";
 const SOURCE = "GITHUB_ISSUE" as const;
@@ -27,6 +28,8 @@ type GitHubIssue = {
   html_url: string;
   repository_url: string;
   created_at: string;
+  updated_at: string;
+  state: string;
   user: { login: string; html_url: string } | null;
   labels: GitHubLabel[];
 };
@@ -44,7 +47,9 @@ export type GitHubScraperOptions = {
 };
 
 export type GitHubScrapeResult = {
+  fetched: number;
   discovered: number;
+  updated: number;
   skipped: number;
   failed: number;
 };
@@ -87,6 +92,7 @@ export class GitHubScraper {
     }
 
     let discovered = 0;
+    let updated = 0;
     let skipped = 0;
     let failed = 0;
 
@@ -95,10 +101,12 @@ export class GitHubScraper {
         const result = await this.persistIssue(issue);
 
         if (result === "skipped") skipped += 1;
+        else if (result === "updated") updated += 1;
         else discovered += 1;
       } catch (error) {
         if (error instanceof GitHubApiError && (error.status === 403 || error.status === 429)) {
-          throw error;
+          this.logger.warn("GitHub ingestion stopped at the API rate limit.");
+          break;
         }
 
         failed += 1;
@@ -106,12 +114,12 @@ export class GitHubScraper {
       }
     }
 
-    return { discovered, skipped, failed };
+    return { fetched: issues.size, discovered, updated, skipped, failed };
   }
 
   private async searchIssues(keyword: string, perPage: number) {
     const url = new URL("/search/issues", GITHUB_API_URL);
-    url.searchParams.set("q", `${keyword} in:title,body is:issue`);
+    url.searchParams.set("q", `${keyword} in:title,body is:issue state:open -label:duplicate`);
     url.searchParams.set("per_page", String(Math.min(Math.max(perPage, 1), 100)));
 
     return this.getJson<GitHubSearchResponse>(url);
@@ -155,14 +163,34 @@ export class GitHubScraper {
     return (await response.json()) as T;
   }
 
-  private async persistIssue(issue: GitHubIssue): Promise<"created" | "skipped"> {
+  private async persistIssue(issue: GitHubIssue): Promise<"created" | "updated" | "skipped"> {
+    if (!isRelevantGitHubIssue(issue.title, issue.body, issue.labels.map((label) => label.name), issue.state)) {
+      return "skipped";
+    }
     const nativeId = String(issue.id);
     const hash = createHash("sha256").update(`${SOURCE}:${nativeId}`).digest("hex");
     const existing = await this.prisma.opportunity.findUnique({ where: { hash } });
 
+    const publishedAt = parsePublishedDate(issue.created_at);
+    const classification = classifyExternalRecord(issue.title, issue.body ?? "", publishedAt, {
+      explicitReward: /\b(\$|usd|eth|sol|reward|paid)\b/i.test(`${issue.title} ${issue.body ?? ""}`),
+    });
+
     if (existing) {
-      this.logger.info(`Skipped duplicate GitHub opportunity: ${issue.html_url}`);
-      return "skipped";
+      await this.prisma.opportunity.update({
+        where: { id: existing.id },
+        data: {
+          title: issue.title,
+          content: issue.body ?? "",
+          category: classification.category,
+          confidence: classification.confidence,
+          sourceQuality: classification.sourceQuality,
+          score: classification.score,
+          publishedAt,
+          isStale: classification.confidence === "STALE",
+        },
+      });
+      return "updated";
     }
 
     const repositoryStars = await this.getRepositoryStars(issue.repository_url);
@@ -185,7 +213,12 @@ export class GitHubScraper {
         title: issue.title,
         url: issue.html_url,
         content: issue.body ?? "",
-        score: this.calculateScore(issue),
+        score: classification.score,
+        category: classification.category,
+        confidence: classification.confidence,
+        sourceQuality: classification.sourceQuality,
+        publishedAt,
+        isStale: classification.confidence === "STALE",
       },
     });
 
@@ -219,11 +252,4 @@ export class GitHubScraper {
     return "created";
   }
 
-  private calculateScore(issue: GitHubIssue) {
-    const content = `${issue.title} ${issue.body ?? ""}`.toLowerCase();
-    const matches = this.keywords.filter((keyword) => content.includes(keyword.toLowerCase()));
-    const explicitIntent = /(looking for|hiring|grant|bounty|audit|need help)/i.test(content);
-
-    return Math.min(100, matches.length * 15 + (explicitIntent ? 25 : 0));
-  }
 }

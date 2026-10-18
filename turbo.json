@@ -8,6 +8,8 @@
     "GOOGLE_CLIENT_ID",
     "GOOGLE_CLIENT_SECRET",
     "AUTH_URL"
+    ,"GITHUB_PAT"
+    ,"INGESTION_SECRET"
   ],
   "tasks": {
     "build": {

@@ -19,14 +19,15 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { cn } from "@/lib/utils";
 import {
-  classifyOpportunity,
-  type OpportunityType,
-  type ConfidenceState,
-} from "@/src/lib/opportunity-classifier";
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
+import { classifyOpportunity } from "@/src/lib/opportunity-classifier";
 import { promoteOpportunityToLead, archiveOpportunity } from "@/app/actions";
+import Link from "next/link";
 
 export interface OpportunityItem {
   id: string;
@@ -35,9 +36,13 @@ export interface OpportunityItem {
   url: string;
   content: string;
   score: number;
+  category?: string;
+  confidence?: string;
+  sourceQuality?: number;
   matchScore: number;
   matchReasons: string[];
   createdAt: string;
+  publishedAt?: string | null;
   keywords?: string[];
   evidence?: unknown;
   saved?: boolean;
@@ -45,22 +50,29 @@ export interface OpportunityItem {
 
 interface OpportunityCardProps {
   opportunity: OpportunityItem;
-  onOpenDetails: (opp: OpportunityItem) => void;
   className?: string;
 }
 
 function formatFreshness(timestamp: string) {
   const date = new Date(timestamp);
   if (Number.isNaN(date.getTime())) return "Recent";
-  const minutes = Math.max(1, Math.round((Date.now() - date.getTime()) / 60000));
+  const minutes = Math.max(
+    1,
+    Math.round((Date.now() - date.getTime()) / 60000),
+  );
   if (minutes < 60) return `${minutes}m ago`;
   if (minutes < 1440) return `${Math.round(minutes / 60)}h ago`;
   return `${Math.round(minutes / 1440)}d ago`;
 }
 
-export function OpportunityCard({ opportunity, onOpenDetails, className }: OpportunityCardProps) {
+export function OpportunityCard({
+  opportunity,
+  className,
+}: OpportunityCardProps) {
   const [isPending, startTransition] = React.useTransition();
-  const [actionType, setActionType] = React.useState<"promote" | "archive" | null>(null);
+  const [actionType, setActionType] = React.useState<
+    "promote" | "archive" | null
+  >(null);
 
   const classified = React.useMemo(() => {
     return classifyOpportunity(
@@ -70,7 +82,15 @@ export function OpportunityCard({ opportunity, onOpenDetails, className }: Oppor
       opportunity.createdAt,
       opportunity.evidence,
     );
-  }, [opportunity.title, opportunity.content, opportunity.url, opportunity.createdAt, opportunity.evidence]);
+  }, [
+    opportunity.title,
+    opportunity.content,
+    opportunity.url,
+    opportunity.createdAt,
+    opportunity.evidence,
+  ]);
+  const category = opportunity.category ?? classified.type;
+  const confidence = opportunity.confidence ?? classified.confidence;
 
   const handlePromote = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -90,7 +110,7 @@ export function OpportunityCard({ opportunity, onOpenDetails, className }: Oppor
 
   // Visual distinction for Confidence state
   const renderConfidenceBadge = () => {
-    switch (classified.confidence) {
+    switch (confidence) {
       case "CONFIRMED":
         return (
           <Badge
@@ -126,19 +146,23 @@ export function OpportunityCard({ opportunity, onOpenDetails, className }: Oppor
 
   // Opportunity Type badge
   const renderTypeBadge = () => {
-    const type = classified.type;
-    const colors: Record<OpportunityType, string> = {
+    const type = category;
+    const colors: Record<string, string> = {
       BOUNTY: "border-primary/40 bg-primary/10 text-primary",
       GRANT: "border-purple-500/40 bg-purple-500/10 text-purple-400",
       JOB: "border-blue-500/40 bg-blue-500/10 text-blue-400",
       HACKATHON: "border-orange-500/40 bg-orange-500/10 text-orange-400",
+      CONTRIBUTOR_REQUEST: "border-cyan-500/40 bg-cyan-500/10 text-cyan-400",
       SIGNAL: "border-zinc-700 bg-zinc-800/40 text-zinc-300",
     };
 
     return (
       <Badge
         variant="outline"
-        className={cn("text-[10px] font-mono font-medium tracking-wide uppercase", colors[type])}
+        className={cn(
+          "text-[10px] font-mono font-medium tracking-wide uppercase",
+          colors[type],
+        )}
       >
         {type}
       </Badge>
@@ -162,7 +186,9 @@ export function OpportunityCard({ opportunity, onOpenDetails, className }: Oppor
             {classified.organization && (
               <span className="flex items-center gap-1 font-mono text-[11px] text-muted-foreground">
                 <Building2 className="size-3 text-muted-foreground/70" />
-                <span className="max-w-[180px] truncate">{classified.organization}</span>
+                <span className="max-w-[180px] truncate">
+                  {classified.organization}
+                </span>
               </span>
             )}
           </div>
@@ -181,21 +207,24 @@ export function OpportunityCard({ opportunity, onOpenDetails, className }: Oppor
             <span>•</span>
             <span className="flex items-center gap-1">
               <Clock className="size-3" />
-              <span>{formatFreshness(opportunity.createdAt)}</span>
+              <span>
+                {formatFreshness(
+                  opportunity.publishedAt ?? opportunity.createdAt,
+                )}
+              </span>
             </span>
           </div>
         </div>
 
         {/* Title and Core Match Header */}
         <div className="flex flex-col gap-1.5">
-          <button
-            type="button"
-            onClick={() => onOpenDetails(opportunity)}
+          <Link
+            href={`/opportunities/${opportunity.id}`}
             className="text-left font-medium text-sm sm:text-base text-foreground hover:text-primary transition-colors flex items-start justify-between gap-2 group/title cursor-pointer"
           >
             <span className="line-clamp-2">{opportunity.title}</span>
             <ArrowUpRight className="size-4 shrink-0 text-muted-foreground group-hover/title:text-primary transition-colors mt-0.5" />
-          </button>
+          </Link>
 
           {/* Explicit Reward & Deadline when known */}
           {(classified.reward || classified.deadline) && (
@@ -250,7 +279,9 @@ export function OpportunityCard({ opportunity, onOpenDetails, className }: Oppor
               <span className="grid size-6 place-items-center rounded bg-primary/10 text-primary font-bold text-xs border border-primary/30">
                 {opportunity.matchScore}
               </span>
-              <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Match</span>
+              <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                Match
+              </span>
             </div>
             <div className="h-3 w-px bg-border" />
             <span className="font-mono text-[10px] text-muted-foreground/80">
@@ -303,18 +334,13 @@ export function OpportunityCard({ opportunity, onOpenDetails, className }: Oppor
                 {isPending && actionType === "promote"
                   ? "Saving..."
                   : opportunity.saved
-                  ? "Saved"
-                  : "Save Lead"}
+                    ? "Saved"
+                    : "Save Lead"}
               </span>
             </Button>
 
-            <Button
-              variant="outline"
-              size="xs"
-              onClick={() => onOpenDetails(opportunity)}
-              className="text-[11px]"
-            >
-              Details
+            <Button asChild variant="outline" size="xs" className="text-[11px]">
+              <Link href={`/opportunities/${opportunity.id}`}>Details</Link>
             </Button>
           </div>
         </div>
@@ -322,4 +348,3 @@ export function OpportunityCard({ opportunity, onOpenDetails, className }: Oppor
     </Card>
   );
 }
-

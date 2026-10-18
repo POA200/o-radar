@@ -15,7 +15,6 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SearchInput } from "@/components/shared/search-input";
 import { EmptyState } from "@/components/shared/empty-state";
 import { OpportunityCard, type OpportunityItem } from "./opportunity-card";
-import { OpportunityDetailSheet } from "./opportunity-detail-sheet";
 import { runDiscovery, type HuntSource } from "@/app/actions";
 import {
   classifyOpportunity,
@@ -38,8 +37,6 @@ export function OpportunityFeedView({
   showHuntControl = true,
 }: OpportunityFeedViewProps) {
   const router = useRouter();
-  const [selectedOpportunity, setSelectedOpportunity] =
-    React.useState<OpportunityItem | null>(null);
   const [search, setSearch] = React.useState(initialFilters?.search ?? "");
   const [sourceFilter, setSourceFilter] = React.useState<HuntSource>("all");
   const [typeFilter, setTypeFilter] = React.useState<string>(
@@ -94,13 +91,16 @@ export function OpportunityFeedView({
 
       // 3. Classified Filters (Type & Confidence)
       if (typeFilter !== "all" || confidenceFilter !== "all") {
-        const classified = classifyOpportunity(
-          item.title,
-          item.content,
-          item.url,
-          item.createdAt,
-          item.evidence,
-        );
+        const classified =
+          item.category && item.confidence
+            ? { type: item.category, confidence: item.confidence }
+            : classifyOpportunity(
+                item.title,
+                item.content,
+                item.url,
+                item.createdAt,
+                item.evidence,
+              );
         if (typeFilter !== "all" && classified.type !== typeFilter)
           return false;
         if (
@@ -284,21 +284,10 @@ export function OpportunityFeedView({
       ) : (
         <div className="grid grid-cols-1 gap-3">
           {filtered.map((opp) => (
-            <OpportunityCard
-              key={opp.id}
-              opportunity={opp}
-              onOpenDetails={(item) => setSelectedOpportunity(item)}
-            />
+            <OpportunityCard key={opp.id} opportunity={opp} />
           ))}
         </div>
       )}
-
-      {/* Detail Slideout Sheet */}
-      <OpportunityDetailSheet
-        opportunity={selectedOpportunity}
-        open={Boolean(selectedOpportunity)}
-        onOpenChange={(open) => !open && setSelectedOpportunity(null)}
-      />
     </div>
   );
 }

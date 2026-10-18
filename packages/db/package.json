@@ -15,6 +15,14 @@
     "./scrapers/rss": {
       "types": "./src/scrapers/rss.ts",
       "default": "./src/scrapers/rss.ts"
+    },
+    "./scrapers/source-adapter": {
+      "types": "./src/scrapers/source-adapter.ts",
+      "default": "./src/scrapers/source-adapter.ts"
+    },
+    "./scrapers/normalization": {
+      "types": "./src/scrapers/normalization.ts",
+      "default": "./src/scrapers/normalization.ts"
     }
   },
   "scripts": {
@@ -24,6 +32,7 @@
     "db:studio": "prisma studio",
     "test:github": "tsx ../../scripts/test-github-scraper.ts",
     "test:rss": "tsx ../../scripts/test-rss-scraper.ts",
+    "test": "tsx --test src/scrapers/normalization.test.ts",
     "build": "prisma generate && tsc --noEmit",
     "check-types": "tsc --noEmit"
   },

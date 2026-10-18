@@ -3,6 +3,7 @@
 import { prisma } from "@o-radar/db";
 import { GitHubScraper } from "@o-radar/db/scrapers/github";
 import { RssScraper } from "@o-radar/db/scrapers/rss";
+import { recordSourceHealth } from "@o-radar/db/scrapers/source-adapter";
 import { revalidatePath } from "next/cache";
 import { requireOnboardedUser } from "../src/require-user";
 import { signOut } from "../auth";
@@ -19,13 +20,54 @@ export async function runDiscovery(source: HuntSource = "all") {
     rss: null as Awaited<ReturnType<RssScraper["run"]>> | null,
   };
 
-  if (source === "github" || source === "all") {
-    results.github = await new GitHubScraper().run(10);
-  }
+  const jobs = [
+    ...(source === "github" || source === "all"
+      ? [
+          new GitHubScraper().run(10).then(async (result) => {
+            results.github = result;
+            await recordSourceHealth(prisma, "GITHUB_ISSUE", {
+              fetched: result.fetched,
+              created: result.discovered,
+              updated: result.updated,
+              skipped: result.skipped,
+              failed: result.failed,
+            });
+          }).catch(async (error) => {
+            await recordSourceHealth(prisma, "GITHUB_ISSUE", {
+              fetched: 0,
+              created: 0,
+              updated: 0,
+              skipped: 0,
+              failed: 1,
+            }, error);
+          }),
+        ]
+      : []),
+    ...(source === "rss" || source === "all"
+      ? [
+          new RssScraper().run().then(async (result) => {
+            results.rss = result;
+            await recordSourceHealth(prisma, "RSS_FEED", {
+              fetched: result.fetched,
+              created: result.discovered,
+              updated: result.updated,
+              skipped: result.skipped,
+              failed: result.failed,
+            });
+          }).catch(async (error) => {
+            await recordSourceHealth(prisma, "RSS_FEED", {
+              fetched: 0,
+              created: 0,
+              updated: 0,
+              skipped: 0,
+              failed: 1,
+            }, error);
+          }),
+        ]
+      : []),
+  ];
 
-  if (source === "rss" || source === "all") {
-    results.rss = await new RssScraper().run();
-  }
+  await Promise.allSettled(jobs);
 
   revalidatePath("/");
   revalidatePath("/discover");

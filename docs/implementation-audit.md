@@ -1,8 +1,8 @@
 # O-Radar — Implementation Audit & Architectural Baseline
 
 **Phase 0: Repository Audit and Implementation Plan**  
-*Date: October 2026*  
-*Role: Senior Engineer / Web3 Opportunity Intelligence*  
+_Date: October 2026_
+_Role: Senior Engineer / Web3 Opportunity Intelligence_
 
 ---
 
@@ -10,9 +10,10 @@
 
 O-Radar is architected as a pnpm Turborepo monorepo designed to help Web3 builders, designers, developers, and freelancers discover opportunities (jobs, bounties, grants, ecosystem programs, and early project signals) and manage them as actionable leads.
 
-The existing codebase contains a functional proof-of-concept with authentication (NextAuth v5 beta + Google OAuth + Neon PostgreSQL via Prisma), two raw scrapers (GitHub Issue Search API and generic RSS XML parser), a feed dashboard, and a rudimentary lead management pipeline. 
+The existing codebase contains a functional proof-of-concept with authentication (NextAuth v5 beta + Google OAuth + Neon PostgreSQL via Prisma), two raw scrapers (GitHub Issue Search API and generic RSS XML parser), a feed dashboard, and a rudimentary lead management pipeline.
 
 However, the application suffers from critical architectural and operational bottlenecks:
+
 1. **Source & Data Quality Deficits**: The feed is flooded with stale, closed, non-Web3 GitHub issues (some years old) and irrelevant RSS articles due to unconstrained search queries, lack of recency filters, missing `state:open` checks, and overwriting issue creation dates with `now()`.
 2. **Missing Opportunity Categorization**: No distinction exists between confirmed jobs/bounties/grants and speculative early-stage hiring signals.
 3. **Global Unscoped Data**: Opportunities and leads are global in the database—leads and pipeline statuses are not scoped per user.
@@ -26,6 +27,7 @@ However, the application suffers from critical architectural and operational bot
 ## 2. Monorepo Architecture & Directory Structure
 
 ### 2.1 Workspace Configuration
+
 - **Package Manager**: `pnpm@11.25.0` (with workspace configuration in `pnpm-workspace.yaml`).
 - **Node Engine**: `>=24` (currently running on Node `v24.19.0`).
 - **Turborepo**: `v2.11.9` (`turbo.json`).
@@ -171,6 +173,7 @@ erDiagram
 ```
 
 ### 3.2 Key Schema Observations & Vulnerabilities
+
 1. **No User Scoping on Opportunities or Leads**:
    - `Opportunity` has no `userId` or tenant reference.
    - `Lead` has no `userId` reference.
@@ -196,14 +199,14 @@ flowchart TD
     CLI["CLI Scripts: test-github / test-rss"] --> ScraperExec
 
     ServerAction --> ScraperExec["Instantiate Scrapers"]
-    
+
     subgraph Scrapers["packages/db/src/scrapers"]
         ScraperExec --> GHS["GitHubScraper.run(limit=10)"]
         ScraperExec --> RSSS["RssScraper.run()"]
-        
+
         GHS --> GHSearch["GitHub API: /search/issues (q='keyword in:title,body is:issue')"]
         GHSearch --> GHStars["GitHub API: /repos/... (stargazers count per issue)"]
-        
+
         RSSS --> RSSFetch["HTTP GET RSS_FEEDS (XML)"]
         RSSFetch --> RSSParse["fast-xml-parser: XML to FeedItem[]"]
     end
@@ -227,13 +230,13 @@ flowchart TD
 
 ### 4.2 Source Inventory
 
-| Source Identifier | Implementation File | Method & API Endpoint | Default Queries / Feeds | Authentication |
-| :--- | :--- | :--- | :--- | :--- |
-| `GITHUB_ISSUE` | `packages/db/src/scrapers/github.ts` | REST: `GET https://api.github.com/search/issues` + `GET issue.repository_url` | 6 static keywords: `"looking for designer"`, `"grant proposal"`, `"bounty"`, `"smart contract audit"`, `"frontend"`, `"UI overhaul"` | Optional `GITHUB_PAT` header (defaults to 60 req/hr unauthenticated) |
-| `RSS_FEED` | `packages/db/src/scrapers/rss.ts` | HTTP GET + `fast-xml-parser` | Reads comma-separated URLs from `RSS_FEEDS` env | None |
-| `GITHUB_DISCUSSION` | Enum only (`schema.prisma`) | *Not implemented* | N/A | N/A |
-| `ECOSYSTEM_FORUM` | Enum only (`schema.prisma`) | *Not implemented* | N/A | N/A |
-| `CUSTOM_SCRAPER` | Enum only (`schema.prisma`) | *Not implemented* | N/A | N/A |
+| Source Identifier   | Implementation File                  | Method & API Endpoint                                                         | Default Queries / Feeds                                                                                                              | Authentication                                                       |
+| :------------------ | :----------------------------------- | :---------------------------------------------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------- |
+| `GITHUB_ISSUE`      | `packages/db/src/scrapers/github.ts` | REST: `GET https://api.github.com/search/issues` + `GET issue.repository_url` | 6 static keywords: `"looking for designer"`, `"grant proposal"`, `"bounty"`, `"smart contract audit"`, `"frontend"`, `"UI overhaul"` | Optional `GITHUB_PAT` header (defaults to 60 req/hr unauthenticated) |
+| `RSS_FEED`          | `packages/db/src/scrapers/rss.ts`    | HTTP GET + `fast-xml-parser`                                                  | Reads comma-separated URLs from `RSS_FEEDS` env                                                                                      | None                                                                 |
+| `GITHUB_DISCUSSION` | Enum only (`schema.prisma`)          | _Not implemented_                                                             | N/A                                                                                                                                  | N/A                                                                  |
+| `ECOSYSTEM_FORUM`   | Enum only (`schema.prisma`)          | _Not implemented_                                                             | N/A                                                                                                                                  | N/A                                                                  |
+| `CUSTOM_SCRAPER`    | Enum only (`schema.prisma`)          | _Not implemented_                                                             | N/A                                                                                                                                  | N/A                                                                  |
 
 ---
 
@@ -244,24 +247,36 @@ flowchart TD
 Both scrapers compute a coarse, static integer score ($0 - 100$) saved into `Opportunity.score`:
 
 1. **GitHub Scoring** (`github.ts#L223-L229`):
+
    ```ts
-   const matches = this.keywords.filter((keyword) => content.includes(keyword.toLowerCase()));
-   const explicitIntent = /(looking for|hiring|grant|bounty|audit|need help)/i.test(content);
+   const matches = this.keywords.filter((keyword) =>
+     content.includes(keyword.toLowerCase()),
+   );
+   const explicitIntent =
+     /(looking for|hiring|grant|bounty|audit|need help)/i.test(content);
    return Math.min(100, matches.length * 15 + (explicitIntent ? 25 : 0));
    ```
-   - *Flaw*: Every occurrence of generic words like "frontend" or "UI overhaul" in an issue description inflates the score by 15 points, regardless of whether the issue is a bug report, documentation task, or already resolved.
+   - _Flaw_: Every occurrence of generic words like "frontend" or "UI overhaul" in an issue description inflates the score by 15 points, regardless of whether the issue is a bug report, documentation task, or already resolved.
 
 2. **RSS Scoring** (`rss.ts#L201-L207`):
    ```ts
-   const intentMatches = ["grant", "bounty", "hiring", "looking for", "job", "contributor", "audit"]
-     .filter((keyword) => content.includes(keyword));
+   const intentMatches = [
+     "grant",
+     "bounty",
+     "hiring",
+     "looking for",
+     "job",
+     "contributor",
+     "audit",
+   ].filter((keyword) => content.includes(keyword));
    return Math.min(100, intentMatches.length * 15 + (item.author ? 10 : 0));
    ```
-   - *Flaw*: A news article discussing "The Ethereum Foundation grant recipient..." gets full intent score matches despite offering no actionable opportunity.
+   - _Flaw_: A news article discussing "The Ethereum Foundation grant recipient..." gets full intent score matches despite offering no actionable opportunity.
 
 ### 5.2 User Profile Personalization & Onboarding Fields
 
 The user profile in `prisma.user` contains:
+
 - `niche`: string (e.g., "Product design for early-stage Web3 teams")
 - `targetRoles`: string array (selected from: "Product / UI design", "Frontend development", "Community & growth", "Content & brand", "Research & strategy")
 - `targetChains`: string array (selected from: "Solana", "Ethereum", "Base", "Arbitrum", "Stacks", "Multichain")
@@ -270,11 +285,12 @@ The user profile in `prisma.user` contains:
 - `portfolioUrl` & `githubUrl`: optional URLs
 
 #### Profile Matching Status:
+
 - **In Main Branch (`origin/main`)**: The user profile is **completely ignored**. `apps/web/app/page.tsx` queries `prisma.opportunity.findMany({ orderBy: [{ score: "desc" }, { createdAt: "desc" }], take: 30 })` and presents the exact same feed to every user.
 - **In Working Tree (`apps/web/src/lib/match-opportunity.ts`)**: An unstaged in-memory scoring function evaluates:
   - Target roles: $+20$ pts per match (max 35).
   - Target chains: $+12$ pts per match (max 20).
-  - Skills: $+10$ pts per match (max 25) — *ineffective because `skills` is never populated*.
+  - Skills: $+10$ pts per match (max 25) — _ineffective because `skills` is never populated_.
   - Niche: $+10$ pts for substring match.
   - CV text: $+5$ pts per matched keyword (max 10).
   - Global signal quality: $+10\%$ bonus from `opportunity.score`.
@@ -285,15 +301,15 @@ The user profile in `prisma.user` contains:
 
 ### 6.1 Routes
 
-| Route | Component File | Auth Guard | Server Actions / Ingestion Calls | Data Operations |
-| :--- | :--- | :--- | :--- | :--- |
-| `/` | `apps/web/app/page.tsx` | `requireOnboardedUser()` | `runDiscovery`, `promoteOpportunityToLead`, `archiveOpportunity` | Queries 30 (or 200) opportunities ordered by score & date |
-| `/leads` | `apps/web/app/leads/page.tsx` | `requireOnboardedUser()` | `updateLeadStatus`, `updateLeadNotes` | Queries all `Lead` records ordered by `updatedAt desc` |
-| `/onboarding`| `apps/web/app/onboarding/page.tsx` | Redirects to `/signin` if no session; redirects to `/` if `onboardingComplete` | `completeOnboarding` | Updates `User` record with preferences, sets `onboardingComplete: true` |
-| `/settings` | `apps/web/app/settings/page.tsx` | `requireOnboardedUser()` | None | Read-only static display of DB, GitHub, and environment status |
-| `/signin` | `apps/web/app/signin/page.tsx` | None | NextAuth `signIn("google", ...)` | Authenticates via Google OAuth |
-| `/api/health` | `apps/web/app/api/health/route.ts` | None | None | Validates `prisma.$queryRawSELECT 1` |
-| `/api/auth/[...nextauth]` | `apps/web/app/api/auth/[...nextauth]/route.ts` | Managed by Auth.js | NextAuth HTTP handlers | Session & OAuth callbacks |
+| Route                     | Component File                                 | Auth Guard                                                                     | Server Actions / Ingestion Calls                                 | Data Operations                                                         |
+| :------------------------ | :--------------------------------------------- | :----------------------------------------------------------------------------- | :--------------------------------------------------------------- | :---------------------------------------------------------------------- |
+| `/`                       | `apps/web/app/page.tsx`                        | `requireOnboardedUser()`                                                       | `runDiscovery`, `promoteOpportunityToLead`, `archiveOpportunity` | Queries 30 (or 200) opportunities ordered by score & date               |
+| `/leads`                  | `apps/web/app/leads/page.tsx`                  | `requireOnboardedUser()`                                                       | `updateLeadStatus`, `updateLeadNotes`                            | Queries all `Lead` records ordered by `updatedAt desc`                  |
+| `/onboarding`             | `apps/web/app/onboarding/page.tsx`             | Redirects to `/signin` if no session; redirects to `/` if `onboardingComplete` | `completeOnboarding`                                             | Updates `User` record with preferences, sets `onboardingComplete: true` |
+| `/settings`               | `apps/web/app/settings/page.tsx`               | `requireOnboardedUser()`                                                       | None                                                             | Read-only static display of DB, GitHub, and environment status          |
+| `/signin`                 | `apps/web/app/signin/page.tsx`                 | None                                                                           | NextAuth `signIn("google", ...)`                                 | Authenticates via Google OAuth                                          |
+| `/api/health`             | `apps/web/app/api/health/route.ts`             | None                                                                           | None                                                             | Validates `prisma.$queryRawSELECT 1`                                    |
+| `/api/auth/[...nextauth]` | `apps/web/app/api/auth/[...nextauth]/route.ts` | Managed by Auth.js                                                             | NextAuth HTTP handlers                                           | Session & OAuth callbacks                                               |
 
 ### 6.2 UI Components & Styling
 
@@ -321,7 +337,9 @@ The user profile in `prisma.user` contains:
 The current feed is dominated by stale GitHub issues and irrelevant RSS entries due to 6 concrete code-level defects:
 
 ### 7.1 Defect 1: GitHub Search Query Lacks Status, Recency, and Web3 Scoping
-*Code Reference*: `packages/db/src/scrapers/github.ts:L112-L118`
+
+_Code Reference_: `packages/db/src/scrapers/github.ts:L112-L118`
+
 ```ts
 private async searchIssues(keyword: string, perPage: number) {
   const url = new URL("/search/issues", GITHUB_API_URL);
@@ -330,12 +348,15 @@ private async searchIssues(keyword: string, perPage: number) {
   return this.getJson<GitHubSearchResponse>(url);
 }
 ```
+
 - **Consequence**: The query does NOT include `state:open`. Closed, resolved, or abandoned issues from 2018–2022 are fetched.
 - **Consequence**: The query does NOT include a date constraint (e.g. `created:>2026-09-01`).
 - **Consequence**: The query is unconstrained across all of GitHub. Searching for `"frontend"` or `"UI overhaul"` returns generic non-Web3 repositories (React tutorial projects, personal blogs, unrelated open-source tools).
 
 ### 7.2 Defect 2: Ingested GitHub Issues Overwrite Creation Dates with `now()`
-*Code Reference*: `packages/db/src/scrapers/github.ts:L180-L190`
+
+_Code Reference_: `packages/db/src/scrapers/github.ts:L180-L190`
+
 ```ts
 const opportunity = await this.prisma.opportunity.create({
   data: {
@@ -350,19 +371,25 @@ const opportunity = await this.prisma.opportunity.create({
   },
 });
 ```
+
 - **Consequence**: `Opportunity.createdAt` in `schema.prisma` defaults to `@default(now())`. An issue originally created 4 years ago receives `createdAt = now()`.
 - In the feed (`page.tsx:L36`), items are sorted by `score desc, createdAt desc`. These antique issues appear as brand new items ("12m ago") at the top of the feed.
 
 ### 7.3 Defect 3: Linear Stargazer Calls Exhaust GitHub API Rate Limits
-*Code Reference*: `packages/db/src/scrapers/github.ts:L81-L87`, `L168`
+
+_Code Reference_: `packages/db/src/scrapers/github.ts:L81-L87`, `L168`
+
 ```ts
 const repositoryStars = await this.getRepositoryStars(issue.repository_url);
 ```
+
 - **Consequence**: For every issue discovered across all 6 keywords, the scraper executes an additional HTTP request to the GitHub repository endpoint.
 - Without a `GITHUB_PAT`, GitHub's unauthenticated IP rate limit is 60 requests per hour. A single "hunt" run immediately triggers `403 rate limit exceeded`, causing ingestion to fail for subsequent items.
 
 ### 7.4 Defect 4: Archived Opportunities Are Never Excluded from the Feed
-*Code Reference*: `apps/web/app/actions.ts:L85-L107` vs `apps/web/app/page.tsx:L33-L43`
+
+_Code Reference_: `apps/web/app/actions.ts:L85-L107` vs `apps/web/app/page.tsx:L33-L43`
+
 - In `actions.ts`: When a user clicks "Archive", `archiveOpportunity()` creates or updates a `Lead` record with `status = "ARCHIVED"`.
 - In `page.tsx`:
   ```ts
@@ -375,16 +402,52 @@ const repositoryStars = await this.getRepositoryStars(issue.repository_url);
 - **Consequence**: The feed query does not check or join `leads` to filter out opportunities marked as `ARCHIVED`. The user clicks "Archive", the button spins, the server action succeeds, but the card remains in the feed.
 
 ### 7.5 Defect 5: Generic RSS Ingestion Lacks Opportunity Filtering
-*Code Reference*: `packages/db/src/scrapers/rss.ts:L201-L207`
+
+_Code Reference_: `packages/db/src/scrapers/rss.ts:L201-L207`
+
 - The RSS scraper treats any article containing words like "grant", "bounty", or "audit" as an opportunity.
 - Informational blogs (e.g. general crypto news or protocol governance recaps) are persisted as opportunities. There is no classification mechanism to distinguish a news article from a hiring announcement or RFP.
 
 ### 7.6 Defect 6: Manual Triggering Only & Fake Sync Status
-*Code Reference*: `apps/web/app/components/dashboard-header.tsx:L44`
+
+_Code Reference_: `apps/web/app/components/dashboard-header.tsx:L44`
+
 ```tsx
 <span>Synced 2m ago</span>
 ```
+
 - **Consequence**: There is no scheduled cron job or background worker. If no user manually triggers "Run hunt", no new data ever enters the system. The header's "Synced 2m ago" label is hardcoded text that misleads users into expecting background automation.
+
+---
+
+## 8. Phase 4 Discovery Pipeline Implementation
+
+### 8.1 Integrated
+
+- GitHub and RSS remain the only live adapters in this phase, but both now use shared normalization helpers and return `fetched`, `created`, `updated`, `skipped`, and `failed` counts.
+- GitHub searches only open issues, rejects duplicate/resolved language and irrelevant issues, preserves repository/issue evidence, and no longer makes per-issue stargazer requests. Optional `GITHUB_PAT` is sent only when configured.
+- RSS preserves feed identity and original URLs, rejects malformed entries, parses dates defensively, and never substitutes the ingestion time for a missing publication date.
+- Existing records are updated by stable source/native-id hashes, so repeated runs refresh classification and stale state without creating duplicates.
+- `OpportunityCategory`, `OpportunityConfidence`, `publishedAt`, `discoveredAt`, `isStale`, and `sourceQuality` distinguish confirmed jobs, bounties, grants, hackathons, contributor requests, and early signals.
+- `SourceHealth` records per-source attempt/success times, counters, and bounded error text. Source failures are isolated with `Promise.allSettled`.
+- `POST /api/ingest` is a secure ingestion entry point. It requires `Authorization: Bearer $INGESTION_SECRET`; a deployment cron or external scheduler must call it. A Next.js route does not schedule itself.
+
+### 8.2 Source inventory
+
+| Source                                     | Category coverage                              | Collection                        | Cost/auth                    | Frequency/status                                     | Limitations                                                                                 |
+| ------------------------------------------ | ---------------------------------------------- | --------------------------------- | ---------------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| GitHub Issue Search API                    | Bounties, jobs, contributor requests, signals  | Official REST API                 | Free; optional `GITHUB_PAT`  | Manual action or secured ingest endpoint; integrated | Search API relevance is imperfect and public unauthenticated limits are low                 |
+| Configured RSS/Atom feeds                  | Grants, jobs, programs, announcements, signals | Public feed URLs from `RSS_FEEDS` | Free; no auth                | Manual action or secured ingest endpoint; integrated | Feed quality, dates, and retention depend on operators; only configured feeds are collected |
+| Official ecosystem job/grant/bounty pages  | Candidate expansion                            | Not integrated                    | To be evaluated per provider | Proposed                                             | No source is assumed to have an API; terms and structured access must be verified first     |
+| Gitcoin, DoraHacks, official announcements | Candidate expansion                            | Not integrated                    | To be evaluated per provider | Proposed                                             | Requires current API/feed/terms verification before implementation                          |
+
+### 8.3 Actual RSS staleness cause
+
+The stale feed was caused by configuration and ingestion behavior together: `RSS_FEEDS` is empty or contains broad, low-signal feeds unless deployment environment variables are maintained, while the collector imported every valid article and scored keyword mentions as opportunities. It also used the parsed publication date as `Opportunity.createdAt`, leaving no separate discovery timestamp or stale state. The Phase 4 schema and normalization changes separate those timestamps, reject malformed/irrelevant records, update duplicates, and expose source health; operators still need to configure current feeds and schedule `/api/ingest`.
+
+### 8.4 Not yet integrated
+
+Gitcoin-related listings, DoraHacks events, ecosystem-specific job boards, grants portals, and public project hiring pages are inventory candidates only. They are intentionally not scraped until their current public API/feed support, terms, rate limits, and activity are verified. No paid service or private access is required by this MVP.
 
 ---
 
@@ -393,14 +456,17 @@ const repositoryStars = await this.getRepositoryStars(issue.repository_url);
 shadcn/ui has **not** been initialized in `apps/web` (no `components.json`). Installing it requires specific architectural accommodations:
 
 ### 8.1 Monorepo Placement
+
 - **Option A (Recommended for Next Phase)**: Initialize shadcn directly in `apps/web`.
-  - *Rationale*: All current UI routes, server actions, and domain components reside in `apps/web`.
+  - _Rationale_: All current UI routes, server actions, and domain components reside in `apps/web`.
 - **Option B**: Initialize shadcn inside `packages/ui`.
-  - *Rationale*: Makes components available across multiple apps (e.g., if a future admin app or documentation app is added).
-  - *Complication*: Requires configuring Tailwind CSS, PostCSS, and React 19 exports across workspace boundaries.
+  - _Rationale_: Makes components available across multiple apps (e.g., if a future admin app or documentation app is added).
+  - _Complication_: Requires configuring Tailwind CSS, PostCSS, and React 19 exports across workspace boundaries.
 
 ### 8.2 Path Alias Configuration
+
 `apps/web/tsconfig.json` currently does not define path mappings:
+
 ```json
 // Current apps/web/tsconfig.json
 {
@@ -412,15 +478,18 @@ shadcn/ui has **not** been initialized in `apps/web` (no `components.json`). Ins
   }
 }
 ```
-- *Required Change*: Add `"baseUrl": "."` and `"paths": { "@/*": ["./*"] }` to `apps/web/tsconfig.json` to allow standard shadcn component imports (`@/components/ui/...`).
+
+- _Required Change_: Add `"baseUrl": "."` and `"paths": { "@/*": ["./*"] }` to `apps/web/tsconfig.json` to allow standard shadcn component imports (`@/components/ui/...`).
 
 ### 8.3 Tailwind CSS & CSS Architecture
+
 - Currently, `apps/web` has no Tailwind dependency, `tailwind.config.ts`, or `postcss.config.mjs`.
 - `apps/web/app/globals.css` defines custom dark-mode CSS variables:
   `--bg: #090a0f`, `--surface: #10121a`, `--accent: #3b82f6`, `--line: #1c2233`.
-- *Requirement*: When installing Tailwind CSS (Tailwind v4 or v3) for shadcn, CSS variable names in `globals.css` must either map to shadcn's expected tokens (`--background`, `--foreground`, `--card`, `--primary`, `--border`, etc.) or be adapted so existing custom styles do not break.
+- _Requirement_: When installing Tailwind CSS (Tailwind v4 or v3) for shadcn, CSS variable names in `globals.css` must either map to shadcn's expected tokens (`--background`, `--foreground`, `--card`, `--primary`, `--border`, etc.) or be adapted so existing custom styles do not break.
 
 ### 8.4 React 19 Compatibility
+
 - `apps/web` uses React `19.2.8` and `@types/react: 19.2.18`.
 - Radix UI primitives and shadcn CLI components must be installed with compatible peer dependency resolutions in pnpm.
 
@@ -429,6 +498,7 @@ shadcn/ui has **not** been initialized in `apps/web` (no `components.json`). Ins
 ## 9. Missing Capabilities Grouped by Priority
 
 ### Priority 0: Critical Foundations & Defect Rectification
+
 1. **Scraper Recency & Quality Guardrails**:
    - Scope GitHub search to `state:open`, `created:>YYYY-MM-DD`, and specific curated Web3 ecosystems/topics (`topic:ethereum`, `topic:solana`, etc.).
    - Persist original issue `created_at` timestamp as `Opportunity.createdAt`.
@@ -444,6 +514,7 @@ shadcn/ui has **not** been initialized in `apps/web` (no `components.json`). Ins
    - Allow users to update their niche, target roles, target chains, skills, and CV from `/settings` after onboarding.
 
 ### Priority 1: Web3 Opportunity Intelligence & Source Expansion
+
 1. **Opportunity Nature & Confidence Taxonomy**:
    - Introduce an `OpportunityType` enum: `JOB`, `BOUNTY`, `GRANT`, `HACKATHON`, `RF_CONTRIBUTOR`, `PROJECT_SIGNAL`.
    - Introduce a `ConfidenceLevel` enum: `CONFIRMED` (verified posting) vs `SPECULATIVE` (inferred signal).
@@ -459,6 +530,7 @@ shadcn/ui has **not** been initialized in `apps/web` (no `components.json`). Ins
    - Add skill tagging to onboarding and settings so `MatchingProfile.skills` is actively matched.
 
 ### Priority 2: Workflow & Conversion Tools
+
 1. **Compensation & Bounty Metadata**:
    - Extract and display structured reward amounts (e.g. "$2,500 USDC", "0.5 ETH", "$120k-$150k").
 2. **Outreach & Research Drafter**:
@@ -487,6 +559,7 @@ graph TD
 ```
 
 ### Phase Dependencies
+
 1. **Foundation First**: Scraper query fixes, archive filtering, and build stability must be deployed before expanding sources, or newly added sources will inherit the same pipeline bugs.
 2. **Schema Migration before Source Expansion**: The schema must support `OpportunityType` (`JOB`, `BOUNTY`, `GRANT`, `SIGNAL`) and `ConfidenceLevel` (`CONFIRMED`, `SPECULATIVE`) before writing parsers for new sources so data is stored correctly from day one.
 3. **UI Infrastructure before Feed Overhaul**: Configuring Tailwind and shadcn allows new faceted filters, badges, and drawers to be built cleanly without expanding custom CSS technical debt.
@@ -495,16 +568,16 @@ graph TD
 
 ## 11. Environment Variables & Consumption Map
 
-| Variable Name | Required At | Consumed In | Purpose | Exposure / Security |
-| :--- | :--- | :--- | :--- | :--- |
-| `DATABASE_URL` | Runtime & Build | `packages/db/prisma/schema.prisma`<br>`apps/web/src/env.ts` | PostgreSQL connection string (Neon hosted) | Server-side only. Must never be exposed to client. |
-| `GITHUB_PAT` | Runtime (Optional) | `packages/db/src/scrapers/github.ts`<br>`apps/web/src/env.ts` | GitHub Personal Access Token for higher rate limits (5,000 req/hr) | Server-side only. Missing in `turbo.json` `globalEnv`. |
-| `RSS_FEEDS` | Runtime (Optional) | `packages/db/src/scrapers/rss.ts` | Comma-separated list of RSS/Atom feed URLs | Server-side only. Tracked in `turbo.json` `globalEnv`. |
-| `AUTH_SECRET` | Runtime | `apps/web/auth.ts`<br>`apps/web/src/env.ts` | NextAuth encryption secret (32+ chars) | Server-side only. Tracked in `turbo.json` `globalEnv`. |
-| `GOOGLE_CLIENT_ID` | Runtime | `apps/web/auth.ts`<br>`apps/web/src/env.ts` | Google Cloud OAuth Client ID | Server-side only. Tracked in `turbo.json` `globalEnv`. |
-| `GOOGLE_CLIENT_SECRET` | Runtime | `apps/web/auth.ts`<br>`apps/web/src/env.ts` | Google Cloud OAuth Client Secret | Server-side only. Tracked in `turbo.json` `globalEnv`. |
-| `AUTH_URL` | Runtime | Turborepo / NextAuth internal | Canonical application URL for OAuth redirects | Server-side only. Tracked in `turbo.json` `globalEnv`. |
-| `NODE_ENV` | Build & Runtime | `apps/web/auth.ts`<br>`packages/db/src/index.ts` | Node runtime environment (`development`, `production`, `test`) | Standard system variable. |
+| Variable Name          | Required At        | Consumed In                                                   | Purpose                                                            | Exposure / Security                                    |
+| :--------------------- | :----------------- | :------------------------------------------------------------ | :----------------------------------------------------------------- | :----------------------------------------------------- |
+| `DATABASE_URL`         | Runtime & Build    | `packages/db/prisma/schema.prisma`<br>`apps/web/src/env.ts`   | PostgreSQL connection string (Neon hosted)                         | Server-side only. Must never be exposed to client.     |
+| `GITHUB_PAT`           | Runtime (Optional) | `packages/db/src/scrapers/github.ts`<br>`apps/web/src/env.ts` | GitHub Personal Access Token for higher rate limits (5,000 req/hr) | Server-side only. Missing in `turbo.json` `globalEnv`. |
+| `RSS_FEEDS`            | Runtime (Optional) | `packages/db/src/scrapers/rss.ts`                             | Comma-separated list of RSS/Atom feed URLs                         | Server-side only. Tracked in `turbo.json` `globalEnv`. |
+| `AUTH_SECRET`          | Runtime            | `apps/web/auth.ts`<br>`apps/web/src/env.ts`                   | NextAuth encryption secret (32+ chars)                             | Server-side only. Tracked in `turbo.json` `globalEnv`. |
+| `GOOGLE_CLIENT_ID`     | Runtime            | `apps/web/auth.ts`<br>`apps/web/src/env.ts`                   | Google Cloud OAuth Client ID                                       | Server-side only. Tracked in `turbo.json` `globalEnv`. |
+| `GOOGLE_CLIENT_SECRET` | Runtime            | `apps/web/auth.ts`<br>`apps/web/src/env.ts`                   | Google Cloud OAuth Client Secret                                   | Server-side only. Tracked in `turbo.json` `globalEnv`. |
+| `AUTH_URL`             | Runtime            | Turborepo / NextAuth internal                                 | Canonical application URL for OAuth redirects                      | Server-side only. Tracked in `turbo.json` `globalEnv`. |
+| `NODE_ENV`             | Build & Runtime    | `apps/web/auth.ts`<br>`packages/db/src/index.ts`              | Node runtime environment (`development`, `production`, `test`)     | Standard system variable.                              |
 
 ---
 
@@ -528,4 +601,3 @@ pnpm --filter @o-radar/db test:rss
 # 5. Inspect Git status and existing uncommitted working tree modifications
 git status -s
 ```
-

@@ -74,9 +74,13 @@ export default async function SavedPage() {
       url: opp.url,
       content: opp.content,
       score: opp.score,
+      category: opp.category,
+      confidence: opp.confidence,
+      sourceQuality: opp.sourceQuality,
       matchScore: match.score,
       matchReasons: match.reasons,
       createdAt: opp.createdAt.toISOString(),
+      publishedAt: opp.publishedAt?.toISOString() ?? null,
       evidence: opp.evidences[0]?.rawPayload ?? {},
       saved: true,
     };

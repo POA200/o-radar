@@ -85,6 +85,21 @@ enum OpportunitySource {
   CUSTOM_SCRAPER
 }
 
+enum OpportunityCategory {
+  JOB
+  BOUNTY
+  GRANT
+  HACKATHON
+  CONTRIBUTOR_REQUEST
+  SIGNAL
+}
+
+enum OpportunityConfidence {
+  CONFIRMED
+  SPECULATIVE
+  STALE
+}
+
 model Project {
   id             String        @id @default(cuid())
   name           String
@@ -96,22 +111,31 @@ model Project {
 }
 
 model Opportunity {
-  id         String            @id @default(cuid())
-  projectId  String?
-  project    Project?          @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  source     OpportunitySource
-  nativeId   String
-  hash       String            @unique
-  title      String
-  url        String
-  content    String            @db.Text
-  score      Int               @default(0)
-  createdAt  DateTime          @default(now())
-  updatedAt  DateTime          @updatedAt
-  evidences  Evidence[]
-  leads      Lead[]
+  id              String                 @id @default(cuid())
+  projectId       String?
+  project         Project?               @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  source          OpportunitySource
+  nativeId        String
+  hash            String                 @unique
+  category        OpportunityCategory    @default(SIGNAL)
+  confidence      OpportunityConfidence  @default(SPECULATIVE)
+  sourceQuality   Int                    @default(0)
+  title           String
+  url             String
+  content         String                 @db.Text
+  score           Int                    @default(0)
+  publishedAt     DateTime?
+  discoveredAt    DateTime               @default(now())
+  expiresAt       DateTime?
+  isStale         Boolean                @default(false)
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+  evidences       Evidence[]
+  leads           Lead[]
 
   @@index([source, nativeId])
+  @@index([category, isStale, publishedAt])
+  @@index([discoveredAt])
 }
 
 model Evidence {
@@ -121,6 +145,20 @@ model Evidence {
   type          String
   rawPayload    Json
   capturedAt    DateTime    @default(now())
+}
+
+model SourceHealth {
+  id              String            @id @default(cuid())
+  source          OpportunitySource @unique
+  lastSuccessAt   DateTime?
+  lastAttemptAt   DateTime?
+  lastError       String?           @db.Text
+  fetchedCount    Int               @default(0)
+  createdCount    Int               @default(0)
+  updatedCount    Int               @default(0)
+  skippedCount    Int               @default(0)
+  failedCount     Int               @default(0)
+  updatedAt       DateTime          @updatedAt
 }
 
 model Lead {

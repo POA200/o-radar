@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { PrismaClient } from "@prisma/client";
 import { XMLParser } from "fast-xml-parser";
 import { prisma as defaultPrisma } from "@o-radar/db";
+import { classifyExternalRecord, parsePublishedDate } from "@o-radar/db/scrapers/normalization";
 
 const SOURCE = "RSS_FEED" as const;
 
@@ -15,7 +16,9 @@ export type RssScraperOptions = {
 };
 
 export type RssScrapeResult = {
+  fetched: number;
   discovered: number;
+  updated: number;
   skipped: number;
   failed: number;
 };
@@ -60,7 +63,7 @@ export class RssScraper {
   async run(): Promise<RssScrapeResult> {
     if (this.feeds.length === 0) {
       this.logger.warn("No RSS feeds configured. Set RSS_FEEDS to comma-separated feed URLs.");
-      return { discovered: 0, skipped: 0, failed: 0 };
+      return { fetched: 0, discovered: 0, updated: 0, skipped: 0, failed: 0 };
     }
 
     const items: FeedItem[] = [];
@@ -76,12 +79,14 @@ export class RssScraper {
     }
 
     let discovered = 0;
+    let updated = 0;
     let skipped = 0;
 
     for (const item of items) {
       try {
         const result = await this.persistItem(item);
         if (result === "skipped") skipped += 1;
+        else if (result === "updated") updated += 1;
         else discovered += 1;
       } catch (error) {
         failed += 1;
@@ -89,7 +94,7 @@ export class RssScraper {
       }
     }
 
-    return { discovered, skipped, failed };
+    return { fetched: items.length, discovered, updated, skipped, failed };
   }
 
   private async fetchFeed(feedUrl: string): Promise<FeedItem[]> {
@@ -138,14 +143,31 @@ export class RssScraper {
     });
   }
 
-  private async persistItem(item: FeedItem): Promise<"created" | "skipped"> {
+  private async persistItem(item: FeedItem): Promise<"created" | "updated" | "skipped"> {
+    const publishedAt = parsePublishedDate(item.publishedAt);
     const nativeId = item.id;
     const hash = createHash("sha256").update(`${SOURCE}:${nativeId}`).digest("hex");
     const existing = await this.prisma.opportunity.findUnique({ where: { hash } });
 
+    const classification = classifyExternalRecord(item.title, item.content, publishedAt, {
+      explicitReward: /\b(\$|usd|eth|sol|reward|paid)\b/i.test(`${item.title} ${item.content}`),
+    });
+
     if (existing) {
-      this.logger.info(`Skipped duplicate RSS opportunity: ${item.url}`);
-      return "skipped";
+      await this.prisma.opportunity.update({
+        where: { id: existing.id },
+        data: {
+          title: item.title,
+          content: item.content,
+          category: classification.category,
+          confidence: classification.confidence,
+          sourceQuality: classification.sourceQuality,
+          score: classification.score,
+          publishedAt,
+          isStale: classification.confidence === "STALE",
+        },
+      });
+      return "updated";
     }
 
     const opportunity = await this.prisma.opportunity.create({
@@ -156,8 +178,12 @@ export class RssScraper {
         title: item.title,
         url: item.url,
         content: item.content,
-        score: this.calculateScore(item),
-        createdAt: toDate(item.publishedAt),
+        score: classification.score,
+        category: classification.category,
+        confidence: classification.confidence,
+        sourceQuality: classification.sourceQuality,
+        publishedAt,
+        isStale: classification.confidence === "STALE",
       },
     });
 
@@ -195,13 +221,6 @@ export class RssScraper {
     return "created";
   }
 
-  private calculateScore(item: FeedItem) {
-    const content = `${item.title} ${item.content}`.toLowerCase();
-    const intentMatches = ["grant", "bounty", "hiring", "looking for", "job", "contributor", "audit"]
-      .filter((keyword) => content.includes(keyword));
-
-    return Math.min(100, intentMatches.length * 15 + (item.author ? 10 : 0));
-  }
 }
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
@@ -233,10 +252,4 @@ function getUrl(item: Record<string, unknown>): string | undefined {
 function getAuthorName(value: unknown): string | undefined {
   const author = asRecord(value);
   return getText(author?.name);
-}
-
-function toDate(value?: string) {
-  if (!value) return undefined;
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? undefined : date;
 }
