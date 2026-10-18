@@ -52,6 +52,23 @@ pnpm exec turbo build
 pnpm exec turbo build
 ```
 
+### Production database migrations
+
+Deploy the committed Prisma migrations before starting the web app:
+
+```bash
+pnpm --filter @o-radar/db db:migrate:deploy
+```
+
+For Vercel, set the build command to run this migration before the web build:
+
+```bash
+pnpm --filter @o-radar/db db:migrate:deploy && pnpm --filter web build
+```
+
+The Vercel project must provide `DATABASE_URL`, `AUTH_SECRET`,
+`GOOGLE_CLIENT_ID`, and `GOOGLE_CLIENT_SECRET` in its Production environment.
+
 You can build a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
 
 With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
