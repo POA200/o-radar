@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { requireOnboardedUser } from "../../../src/require-user";
 import { ListingLeadEditor } from "@/components/listing-lead/listing-lead-editor";
+import { LiveMarketDataCard } from "@/components/listing-lead/live-market-data";
 import { listingLeadStatusLabel } from "@/lib/listing-lead-status";
 import { scoreProspect } from "@/lib/prospect-score";
 import { ExternalLink, ArrowLeft, Copy } from "lucide-react";
@@ -129,6 +130,7 @@ export default async function ListingLeadResearchPage({
               </CardContent>
             </Card>
 
+            <LiveMarketDataCard chain={item.chain} contractAddress={item.contractAddress} lead={{ notes: item.notes, contactName: item.contactName, contactEmail: item.contactEmail, contactTelegram: item.contactTelegram, websiteUrl: item.websiteUrl, xUrl: item.xUrl, telegramUrl: item.telegramUrl, discordUrl: item.discordUrl, nextFollowUpAt: item.nextFollowUpAt, listingStatus: item.listingStatus }} />
             <Card>
               <CardHeader><CardTitle className="text-sm">Research notes (user-maintained)</CardTitle></CardHeader>
               <CardContent className="text-sm whitespace-pre-wrap">{item.notes || "No notes yet."}</CardContent>

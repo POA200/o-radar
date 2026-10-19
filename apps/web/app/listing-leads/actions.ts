@@ -599,3 +599,167 @@ export async function discoverGeckoTerminal(params: {
   });
   return normalized.slice(0, 50);
 }
+
+
+// ===== Live market data (read-only) =====
+
+export type LiveMarketData = {
+  provider: "DEX_SCREENER" | "GECKO_TERMINAL";
+  fetchedAt: string;
+  chain: string | null;
+  tokenAddress: string | null;
+  pairAddress: string | null;
+  pairUrl: string | null;
+  dexName: string | null;
+  priceUsd: string | null;
+  priceChange24h: string | null;
+  volume24hUsd: number | null;
+  liquidityUsd: number | null;
+  marketCap: number | null;
+  marketCapSource: "marketCap" | "fdv" | null;
+  fdv: number | null;
+  tokenName: string | null;
+  tokenSymbol: string | null;
+};
+
+const DEX_CHAINS = new Set(["solana","bsc","ethereum","base","arbitrum","polygon","avalanche","optimism","fantom","cronos","moonbeam","moonriver","kava","celo","harmony","aurora","near","tron","sui","aptos","ton","starknet","zksync","linea","scroll","mantle","blast","mode","manta","taiko"]);
+const GECKO_NETWORKS = new Set(["solana","bsc","ethereum","base","arbitrum","polygon_pos","avalanche","optimism","fantom","cronos","moonbeam","moonriver","celo","harmony","aurora","near","tron","sui","aptos","ton","starknet","zksync","linea","scroll","mantle","blast","mode","manta","taiko","polygon"]);
+
+export async function fetchLiveMarketData(params: { provider: "dex" | "gecko"; chain: string | null; contractAddress: string | null }): Promise<LiveMarketData> {
+  await requireOnboardedUser();
+  const chain = normalizeChain(params.chain);
+  const addr = normalizeAddress(params.contractAddress);
+  if (!chain || !addr) throw new Error("Chain and contract address are required.");
+
+  if (params.provider === "dex") {
+    if (!DEX_CHAINS.has(chain)) throw new Error(`Unsupported chain for DEX Screener: ${chain}`);
+    const url = `${DEX_API}/tokens/v1/${encodeURIComponent(chain)}/${addr}`;
+    const data = await fetchJson(url);
+    const pairs = Array.isArray(data) ? data : [];
+    // find pairs where base or quote token address matches addr
+    const matching = pairs.filter((p) => {
+      const r = asRecord(p);
+      if (!r) return false;
+      const base = asRecord(r.baseToken);
+      const quote = asRecord(r.quoteToken);
+      return str(base?.address)?.toLowerCase() === addr.toLowerCase() || str(quote?.address)?.toLowerCase() === addr.toLowerCase();
+    });
+    if (matching.length === 0) throw new Error("No matching market data found from DEX Screener.");
+    // pick best by liquidity then volume
+    let best = matching[0] as Record<string, unknown>;
+    for (const c of matching.slice(1)) {
+      const r = asRecord(c)!;
+      const lBest = num(asRecord(best.liquidity)?.usd) ?? 0;
+      const lCur = num(asRecord(r.liquidity)?.usd) ?? 0;
+      if (lCur > lBest || (lCur === lBest && (num(asRecord(r.volume)?.h24) ?? 0) > (num(asRecord(best.volume)?.h24) ?? 0))) best = r;
+    }
+    const r = best;
+    const base = asRecord(r.baseToken);
+    const quote = asRecord(r.quoteToken);
+    const matched = str(base?.address)?.toLowerCase() === addr.toLowerCase() ? base : quote;
+    const liq = asRecord(r.liquidity);
+    const vol = asRecord(r.volume);
+    const info = asRecord(r.info);
+    const pc = asRecord(r.priceChange);
+    return {
+      provider: "DEX_SCREENER",
+      fetchedAt: new Date().toISOString(),
+      chain,
+      tokenAddress: addr,
+      pairAddress: str(r.pairAddress),
+      pairUrl: str(r.url),
+      dexName: str(r.dexId),
+      priceUsd: str(r.priceUsd),
+      priceChange24h: pc ? str(pc.h24) : null,
+      volume24hUsd: num(vol?.h24),
+      liquidityUsd: num(liq?.usd),
+      marketCap: num(r.marketCap) ?? num(r.fdv),
+      marketCapSource: num(r.marketCap) != null ? "marketCap" : (num(r.fdv) != null ? "fdv" : null),
+      fdv: num(r.fdv),
+      tokenName: str(matched?.name),
+      tokenSymbol: str(matched?.symbol),
+    };
+  }
+
+  // gecko
+  const net = GECKO_NETWORKS.has(chain) ? chain : null;
+  if (!net) throw new Error(`Unsupported network for GeckoTerminal: ${chain}`);
+  const url = `${GECKO_API}/networks/${encodeURIComponent(net)}/tokens/${encodeURIComponent(addr)}/pools?include=base_token,quote_token,dex&page=1`;
+  const data = await fetchGeckoJson(url);
+  const obj = asRecord(data);
+  const arr = Array.isArray(obj?.data) ? obj.data : [];
+  const included = Array.isArray(obj?.included) ? obj.included : [];
+  const incMap = new Map<string, Record<string, unknown>>();
+  for (const it of included) {
+    const r = asRecord(it);
+    if (r) incMap.set(`${str(r.type)}:${str(r.id)}`, r);
+  }
+  const resolve = (rel: unknown) => {
+    const d = asRecord(asRecord(rel)?.data);
+    if (!d) return null;
+    return incMap.get(`${str(d.type)}:${str(d.id)}`) ?? null;
+  };
+  const pools: Record<string, unknown>[] = [];
+  for (const p of arr) {
+    const rec = asRecord(p);
+    if (!rec) continue;
+    const attrs = asRecord(rec.attributes);
+    if (!attrs) continue;
+    const rels = asRecord(rec.relationships);
+    const baseToken = resolve(rels?.base_token);
+    const quoteToken = resolve(rels?.quote_token);
+    const baseAttrs = asRecord(baseToken?.attributes);
+    const quoteAttrs = asRecord(quoteToken?.attributes);
+    const baseAddr = str(baseAttrs?.address);
+    const quoteAddr = str(quoteAttrs?.address);
+    if (baseAddr?.toLowerCase() !== addr.toLowerCase() && quoteAddr?.toLowerCase() !== addr.toLowerCase()) continue;
+    pools.push(rec);
+  }
+  if (pools.length === 0) throw new Error("No matching market data found from GeckoTerminal.");
+  // pick best by reserve then volume
+  let best = pools[0];
+  for (const c of pools.slice(1)) {
+    const a = asRecord(best)!; const b = asRecord(c)!;
+    const aa = asRecord(a.attributes) ?? {};
+    const bb = asRecord(b.attributes) ?? {};
+    const la = num(aa.reserve_in_usd ? Number(aa.reserve_in_usd) : null) ?? 0;
+    const lb = num(bb.reserve_in_usd ? Number(bb.reserve_in_usd) : null) ?? 0;
+    const va = num(asRecord(aa.volume_usd)?.h24 ? Number(asRecord(aa.volume_usd)?.h24) : null) ?? 0;
+    const vb = num(asRecord(bb.volume_usd)?.h24 ? Number(asRecord(bb.volume_usd)?.h24) : null) ?? 0;
+    if (lb > la || (lb === la && vb > va)) best = c;
+  }
+  const rec = asRecord(best)!;
+  const attrs = asRecord(rec.attributes)!;
+  const rels = asRecord(rec.relationships);
+  const baseToken = resolve(rels?.base_token);
+  const quoteToken = resolve(rels?.quote_token);
+  const dexRel = resolve(rels?.dex);
+  const baseAttrs = asRecord(baseToken?.attributes);
+  const quoteAttrs = asRecord(quoteToken?.attributes);
+  const projectAttrs = str(baseAttrs?.address)?.toLowerCase() === addr.toLowerCase() ? baseAttrs : quoteAttrs;
+  const netId = str(asRecord(asRecord(rels?.network)?.data)?.id);
+  const poolAddress = str(attrs.address);
+  const poolUrl = netId && poolAddress ? `https://www.geckoterminal.com/${netId}/pools/${poolAddress}` : null;
+  const vol24 = asRecord(attrs.volume_usd)?.h24 ? Number(asRecord(attrs.volume_usd)?.h24) : null;
+  const liq = attrs.reserve_in_usd ? Number(attrs.reserve_in_usd) : null;
+  const mc = attrs.market_cap_usd ? Number(attrs.market_cap_usd) : null;
+  const fdv = attrs.fdv_usd ? Number(attrs.fdv_usd) : null;
+  return {
+    provider: "GECKO_TERMINAL",
+    fetchedAt: new Date().toISOString(),
+    chain: netId ?? chain,
+    tokenAddress: addr,
+    pairAddress: poolAddress,
+    pairUrl: poolUrl,
+    dexName: str(asRecord(dexRel?.attributes)?.name) ?? str(dexRel?.id),
+    priceUsd: str(attrs.base_token_price_usd),
+    priceChange24h: attrs.price_change_percentage ? str(asRecord(attrs.price_change_percentage)?.h24) : null,
+    volume24hUsd: num(vol24),
+    liquidityUsd: num(liq),
+    marketCap: mc,
+    marketCapSource: mc != null ? "marketCap" : (fdv != null ? "fdv" : null),
+    fdv: fdv,
+    tokenName: str(projectAttrs?.name),
+    tokenSymbol: str(projectAttrs?.symbol),
+  };
+}
