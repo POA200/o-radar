@@ -1,5 +1,7 @@
 "use server";
 
+import { normalizeChain, normalizeAddress, leadKey } from "@/lib/lead-normalize";
+
 import { prisma } from "@o-radar/db";
 import { revalidatePath } from "next/cache";
 import { requireOnboardedUser } from "../../src/require-user";
@@ -48,7 +50,9 @@ export type ListingLeadInput = z.infer<typeof listingLeadSchema>;
 export async function createListingLead(input: ListingLeadInput) {
   await requireOnboardedUser();
   const data = listingLeadSchema.parse(input);
-  const created = await prisma.listingLead.create({
+  let created;
+  try {
+    created = await prisma.listingLead.create({
     data: {
       projectName: data.projectName,
       tokenSymbol: data.tokenSymbol || null,
@@ -71,7 +75,14 @@ export async function createListingLead(input: ListingLeadInput) {
       lastContactedAt: data.lastContactedAt ? new Date(data.lastContactedAt) : null,
       nextFollowUpAt: data.nextFollowUpAt ? new Date(data.nextFollowUpAt) : null,
     },
-  });
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg.includes("Unique constraint") || msg.includes("P2002")) {
+      throw new Error("A Listing Lead with this chain and contract address already exists.");
+    }
+    throw e;
+  }
   revalidatePath("/listing-leads");
   return created;
 }
@@ -116,6 +127,7 @@ export async function deleteListingLead(id: string) {
 
 // ===== DEX Screener discovery =====
 
+
 export type DexScreenerResult = {
   chain: string | null;
   tokenAddress: string | null;
@@ -132,6 +144,7 @@ export type DexScreenerResult = {
   marketCapSource: "marketCap" | "fdv" | null;
   priceUsd: string | null;
   description: string | null;
+  alreadySaved?: boolean;
 };
 
 const DEX_API = "https://api.dexscreener.com";
@@ -385,7 +398,15 @@ export async function discoverDexScreener(params: {
     }
   }
 
-  return results.slice(0, 50);
+  // Normalize keys and mark already-saved leads.
+  const existing = await prisma.listingLead.findMany({ select: { chain: true, contractAddress: true } });
+  const existingKeys = new Set(existing.map((e) => leadKey(e.chain, e.contractAddress)));
+  const normalized = results.map((r) => {
+    const chain = normalizeChain(r.chain);
+    const tokenAddress = normalizeAddress(r.tokenAddress);
+    return { ...r, chain, tokenAddress, alreadySaved: existingKeys.has(leadKey(chain, tokenAddress)) };
+  });
+  return normalized.slice(0, 50);
 }
 
 // ===== GeckoTerminal discovery =====
@@ -568,5 +589,13 @@ export async function discoverGeckoTerminal(params: {
     // network filter applied in add() via params.network
   }
 
-  return results.slice(0, 50);
+  // Normalize keys and mark already-saved leads.
+  const existing = await prisma.listingLead.findMany({ select: { chain: true, contractAddress: true } });
+  const existingKeys = new Set(existing.map((e) => leadKey(e.chain, e.contractAddress)));
+  const normalized = results.map((r) => {
+    const chain = normalizeChain(r.chain);
+    const tokenAddress = normalizeAddress(r.tokenAddress);
+    return { ...r, chain, tokenAddress, alreadySaved: existingKeys.has(leadKey(chain, tokenAddress)) };
+  });
+  return normalized.slice(0, 50);
 }

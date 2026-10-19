@@ -51,6 +51,8 @@ import {
   discoverGeckoTerminal,
   type DexScreenerResult,
 } from "@/app/listing-leads/actions";
+import { scoreProspect } from "@/lib/prospect-score";
+import { LISTING_LEAD_STATUS_LABELS, listingLeadStatusLabel, followUpBucket } from "@/lib/listing-lead-status";
 
 export interface ListingLeadItem {
   id: string;
@@ -120,6 +122,8 @@ export function ListingLeadTable({ leads }: Props) {
   const [chainFilter, setChainFilter] = React.useState("all");
   const [statusFilter, setStatusFilter] = React.useState("all");
   const [priorityFilter, setPriorityFilter] = React.useState("all");
+  const [followUpFilter, setFollowUpFilter] = React.useState("all");
+  const [sortByFollowUp, setSortByFollowUp] = React.useState(false);
   const [editing, setEditing] = React.useState<ListingLeadItem | null>(null);
   const [open, setOpen] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
@@ -181,7 +185,7 @@ export function ListingLeadTable({ leads }: Props) {
     try {
       for (const i of selected) {
         const r = discoverResults[i];
-        if (!r) continue;
+        if (!r || r.alreadySaved) continue;
         await createListingLead({
           projectName: r.projectName,
           tokenSymbol: r.tokenSymbol ?? "",
@@ -235,9 +239,15 @@ export function ListingLeadTable({ leads }: Props) {
       if (chainFilter !== "all" && l.chain !== chainFilter) return false;
       if (statusFilter !== "all" && l.listingStatus !== statusFilter) return false;
       if (priorityFilter !== "all" && String(l.priority) !== priorityFilter) return false;
+      if (followUpFilter !== "all" && followUpBucket(l.nextFollowUpAt) !== followUpFilter) return false;
       return true;
+    }).sort((a, b) => {
+      if (!sortByFollowUp) return 0;
+      const aD = a.nextFollowUpAt ? new Date(a.nextFollowUpAt).getTime() : Infinity;
+      const bD = b.nextFollowUpAt ? new Date(b.nextFollowUpAt).getTime() : Infinity;
+      return aD - bD;
     });
-  }, [leads, search, chainFilter, statusFilter, priorityFilter]);
+  }, [leads, search, chainFilter, statusFilter, priorityFilter, followUpFilter, sortByFollowUp]);
 
   const emptyForm: ListingLeadInput = {
     projectName: "",
@@ -349,6 +359,22 @@ export function ListingLeadTable({ leads }: Props) {
                 ))}
               </SelectContent>
             </Select>
+            <Select value={followUpFilter} onValueChange={setFollowUpFilter}>
+              <SelectTrigger className="h-8 text-xs font-mono w-[130px] bg-secondary/50 border-border">
+                <SelectValue placeholder="Follow-up" />
+              </SelectTrigger>
+              <SelectContent className="bg-popover border-border">
+                <SelectItem value="all">All Follow-ups</SelectItem>
+                <SelectItem value="overdue">Overdue</SelectItem>
+                <SelectItem value="today">Due Today</SelectItem>
+                <SelectItem value="upcoming">Upcoming</SelectItem>
+                <SelectItem value="none">No Follow-up</SelectItem>
+              </SelectContent>
+            </Select>
+            <label className="flex items-center gap-1 text-xs">
+              <input type="checkbox" checked={sortByFollowUp} onChange={(e) => setSortByFollowUp(e.target.checked)} />
+              Sort by follow-up
+            </label>
             <Select value={priorityFilter} onValueChange={setPriorityFilter}>
               <SelectTrigger className="h-8 text-xs font-mono w-[110px] bg-secondary/50 border-border">
                 <SelectValue placeholder="Priority" />
@@ -429,7 +455,7 @@ export function ListingLeadTable({ leads }: Props) {
                     <Select value={form.listingStatus} onValueChange={(v) => setForm({ ...form, listingStatus: v as ListingLeadInput["listingStatus"] })}>
                       <SelectTrigger className="h-8 text-xs font-mono"><SelectValue /></SelectTrigger>
                       <SelectContent className="bg-popover border-border">
-                        {STATUS_OPTIONS.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                        {STATUS_OPTIONS.map((s) => <SelectItem key={s} value={s}>{listingLeadStatusLabel(s)}</SelectItem>)}
                       </SelectContent>
                     </Select>
                   </div>
@@ -540,6 +566,7 @@ export function ListingLeadTable({ leads }: Props) {
                             <TableHead>24h Vol</TableHead>
                             <TableHead>Liquidity</TableHead>
                             <TableHead>Market Cap</TableHead>
+                            <TableHead>Score</TableHead>
                             <TableHead>Source</TableHead>
                           </TableRow>
                         </TableHeader>
@@ -547,7 +574,8 @@ export function ListingLeadTable({ leads }: Props) {
                           {discoverResults.map((r, i) => (
                             <TableRow key={i}>
                               <TableCell>
-                                <input type="checkbox" checked={selected.has(i)} onChange={() => toggleSelect(i)} />
+                                <input type="checkbox" checked={selected.has(i)} onChange={() => toggleSelect(i)} disabled={!!r.alreadySaved} />
+                                {r.alreadySaved && <span className="ml-1 text-[10px] text-muted-foreground">Already saved</span>}
                               </TableCell>
                               <TableCell className="font-medium">{r.projectName}</TableCell>
                               <TableCell className="font-mono text-xs">{r.tokenSymbol ?? "—"}</TableCell>
@@ -556,6 +584,13 @@ export function ListingLeadTable({ leads }: Props) {
                               <TableCell className="font-mono text-xs">{formatUsd(r.liquidityUsd)}</TableCell>
                               <TableCell className="font-mono text-xs">
                                 {r.marketCap === null ? "N/A" : `${r.marketCapSource === "fdv" ? "FDV" : "MC"} ${formatUsd(r.marketCap)}`}
+                              </TableCell>
+                              <TableCell className="font-mono text-xs">
+                                {(() => {
+                                  const sc = scoreProspect(r);
+                                  const title = `${sc.label} — ${sc.score}/100\n${sc.positives.join(", ")}${sc.warnings.length ? "\nWarnings: " + sc.warnings.join(", ") : ""}`;
+                                  return <span title={title} className={sc.label === "Insufficient data" ? "text-muted-foreground" : ""}>{sc.score} · {sc.label}</span>;
+                                })()}
                               </TableCell>
                               <TableCell>
                                 {r.sourceUrl && (
@@ -622,11 +657,15 @@ export function ListingLeadTable({ leads }: Props) {
                   <TableCell className="font-mono text-xs">{formatUsd(l.volume24hUsd)}</TableCell>
                   <TableCell className="font-mono text-xs">{l.holderCount ?? "N/A"}</TableCell>
                   <TableCell>
-                    <StatusBadge status={l.listingStatus} />
+                    <StatusBadge status={l.listingStatus} label={listingLeadStatusLabel(l.listingStatus)} />
                   </TableCell>
                   <TableCell className="font-mono text-xs">{l.priority}</TableCell>
                   <TableCell className="text-xs text-muted-foreground">
-                    {l.nextFollowUpAt ? new Date(l.nextFollowUpAt).toLocaleDateString() : "—"}
+                    {l.nextFollowUpAt ? (
+                      <span className={followUpBucket(l.nextFollowUpAt) === "overdue" ? "text-destructive font-semibold" : followUpBucket(l.nextFollowUpAt) === "today" ? "text-amber-500 font-semibold" : ""}>
+                        {new Date(l.nextFollowUpAt).toLocaleDateString()}
+                      </span>
+                    ) : "—"}
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-1">
