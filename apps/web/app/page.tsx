@@ -29,7 +29,7 @@ import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/shared/empty-state";
 import { OpportunityFeedView } from "@/components/opportunity/opportunity-feed-view";
 import { requireOnboardedUser } from "../src/require-user";
-import { matchOpportunity } from "../src/lib/match-opportunity";
+import { matchOpportunity, compareOpportunities } from "../src/lib/match-opportunity";
 import { classifyOpportunity } from "../src/lib/opportunity-classifier";
 
 export const dynamic = "force-dynamic";
@@ -115,23 +115,22 @@ export default async function OverviewPage() {
       category: opp.category,
       confidence: opp.confidence,
       sourceQuality: opp.sourceQuality,
-      matchScore: match.score,
-      matchReasons: match.reasons,
+      // Use structured personal match scores
+      matchScore: match.personal.score,
+      matchReasons: match.personal.reasons,
       createdAt: opp.createdAt.toISOString(),
       publishedAt: opp.publishedAt?.toISOString() ?? null,
       evidence: opp.evidences[0]?.rawPayload ?? {},
       saved: isSaved,
+      _match: match,
     };
   });
 
-  // 4. Top Profile Matches (sorted by matchScore desc)
+  // 4. Top Profile Matches (sorted by personal, credibility, then freshness)
   const topMatches = [...matchedOpportunities]
-    .sort(
-      (a, b) =>
-        b.matchScore - a.matchScore ||
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-    )
-    .slice(0, 4);
+  .sort((a, b) => compareOpportunities(a._match, b._match))
+  .slice(0, 4)
+  .map(({ _match, ...rest }) => rest);
 
   // 5. Fetch High-Priority Leads that need follow up
   const priorityLeads = await prisma.lead.findMany({

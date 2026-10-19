@@ -79,8 +79,9 @@ export default async function DiscoverPage({
       category: opp.category,
       confidence: opp.confidence,
       sourceQuality: opp.sourceQuality,
-      matchScore: match.score,
-      matchReasons: match.reasons,
+      // Use structured personal match scores
+      matchScore: match.personal.score,
+      matchReasons: match.personal.reasons,
       createdAt: opp.createdAt.toISOString(),
       publishedAt: opp.publishedAt?.toISOString() ?? null,
       evidence: opp.evidences[0]?.rawPayload ?? {},
