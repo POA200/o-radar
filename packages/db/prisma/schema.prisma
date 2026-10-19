@@ -183,3 +183,59 @@ model Lead {
   @@unique([userId, opportunityId, platform, handle])
   @@index([userId, status])
 }
+
+
+enum ListingDiscoverySource {
+  DEX_SCREENER
+  COIN_GECKO
+  COIN_MARKET_CAP
+  LAUNCHPAD
+  GECKO_TERMINAL
+  MANUAL
+  OTHER
+}
+
+enum ListingLeadStatus {
+  DISCOVERED
+  RESEARCHING
+  QUALIFIED
+  CONTACTED
+  REPLIED
+  IN_PROGRESS
+  WON
+  LOST
+  CONVERTED
+  ARCHIVED
+}
+
+model ListingLead {
+  id               String                 @id @default(cuid())
+  projectName      String
+  tokenSymbol      String?
+  chain            String?
+  contractAddress  String?
+  websiteUrl       String?
+  xUrl             String?
+  telegramUrl      String?
+  discordUrl       String?
+  discoverySource  ListingDiscoverySource  @default(MANUAL)
+  sourceUrl        String?
+  volume24hUsd     Float?
+  holderCount      Int?
+  listingStatus    ListingLeadStatus      @default(DISCOVERED)
+  priority         Int                    @default(0)
+  contactName      String?
+  contactEmail     String?
+  contactTelegram  String?
+  notes            String?                @db.Text
+  lastContactedAt  DateTime?
+  nextFollowUpAt   DateTime?
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+
+  @@unique([chain, contractAddress])
+  @@index([listingStatus])
+  @@index([chain])
+  @@index([priority])
+  @@index([createdAt])
+}

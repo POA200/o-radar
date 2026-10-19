@@ -10,6 +10,7 @@ import {
   Bookmark,
   Settings,
   Radar,
+  Building2,
   LogOut,
   Menu,
   Activity,
@@ -39,6 +40,7 @@ const navItems = [
   { href: "/", label: "Overview", icon: LayoutDashboard },
   { href: "/discover", label: "Discover", icon: Compass },
   { href: "/leads", label: "My Leads", icon: Briefcase },
+  { href: "/listing-leads", label: "Listing Leads", icon: Building2 },
   { href: "/saved", label: "Saved", icon: Bookmark },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
