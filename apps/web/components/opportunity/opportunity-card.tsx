@@ -42,6 +42,7 @@ export interface OpportunityItem {
   matchScore: number;
   matchReasons: string[];
   createdAt: string;
+  isStale?: boolean;
   publishedAt?: string | null;
   keywords?: string[];
   evidence?: unknown;
@@ -258,6 +259,19 @@ export function OpportunityCard({
             ))}
           </div>
         )}
+        {(() => {
+          const parts: string[] = [];
+          if (opportunity.isStale) parts.push("Marked stale; verify applications are still open.");
+          if (opportunity.confidence === "STALE") parts.push("Listing may no longer be active.");
+          if (opportunity.category === "BOUNTY") parts.push("Listed as a bounty; review reward terms before applying.");
+          if (opportunity.category === "GRANT") parts.push("Grant program; check eligibility and deadlines.");
+          if (opportunity.matchReasons?.includes("No strong profile match yet")) parts.push("Matched by O-Radar's relevance scoring.");
+          const created = new Date(opportunity.createdAt);
+          const days = (Date.now() - created.getTime()) / 86400000;
+          if (days <= 30) parts.push("Recently discovered.");
+          if (parts.length === 0) return null;
+          return <p className="text-[11px] text-muted-foreground">{parts.join(" ")}</p>;
+        })()}
 
         {/* Tag pills */}
         <div className="flex flex-wrap items-center gap-1.5">

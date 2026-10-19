@@ -15,6 +15,11 @@ export default async function DiscoverPage({
 }) {
   const user = await requireOnboardedUser();
   const params = await searchParams;
+  const q = typeof params.q === "string" ? params.q.trim() : "";
+  const category = typeof params.category === "string" ? params.category : "all";
+  const confidence = typeof params.confidence === "string" ? params.confidence : "all";
+  const freshness = typeof params.freshness === "string" ? params.freshness : "all";
+  const source = typeof params.source === "string" ? params.source : "all";
 
   const [activeLeadsCount, latestSync, opportunitiesRaw] = await Promise.all([
     prisma.lead.count({
@@ -25,11 +30,15 @@ export default async function DiscoverPage({
       select: { createdAt: true },
     }),
     prisma.opportunity.findMany({
-      where: {
+      where: Object.assign({
         leads: {
           none: { userId: user.id, status: "ARCHIVED" },
         },
-      },
+      }, q ? { OR: [
+        { title: { contains: q, mode: "insensitive" } },
+        { content: { contains: q, mode: "insensitive" } },
+      ] } : {}, category !== "all" ? { category } : {}, confidence !== "all" ? { confidence } : {}, freshness === "recent" ? { isStale: false } : {}, freshness === "stale" ? { isStale: true } : {}, source !== "all" ? { source } : {}),
+
       orderBy: [{ score: "desc" }, { createdAt: "desc" }],
       take: 120,
       include: {
@@ -83,6 +92,7 @@ export default async function DiscoverPage({
       matchScore: match.personal.score,
       matchReasons: match.personal.reasons,
       createdAt: opp.createdAt.toISOString(),
+      isStale: opp.isStale,
       publishedAt: opp.publishedAt?.toISOString() ?? null,
       evidence: opp.evidences[0]?.rawPayload ?? {},
       saved: isSaved,

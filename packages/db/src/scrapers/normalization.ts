@@ -41,7 +41,7 @@ export function classifyCategory(title: string, content: string): OpportunityCat
   if (/\b(hackathon|buidlathon|accelerator)\b/i.test(titleAndContent)) return "HACKATHON";
   if (/\b(bounty|bug bounty|paid task|reward)\b/i.test(titleAndContent)) return "BOUNTY";
   if (/\b(grant|grants|rfp|fellowship)\b/i.test(titleAndContent)) return "GRANT";
-  if (/\b(hiring|job opening|career|full[- ]time|part[- ]time|contractor)\b/i.test(titleAndContent)) return "JOB";
+  if (/\b(hiring|job opening|career|full[- ]time|part[- ]time|contractor|freelance|contract)\b/i.test(titleAndContent)) return "JOB";
   if (/\b(contributor|designer|developer|engineer|moderator|content creator)s? wanted\b/i.test(titleAndContent)) return "CONTRIBUTOR_REQUEST";
   return "SIGNAL";
 }
@@ -56,5 +56,12 @@ export function isRelevantGitHubIssue(title: string, body: string | null, labels
   if (state !== "open") return false;
   const text = `${title} ${body ?? ""}`;
   if (/\b(fixed|resolved|duplicate|wontfix|not planned)\b/i.test(text)) return false;
-  return explicitRequest.test(text) || labels.some((label) => /bounty|grant|hiring|good first issue|paid/i.test(label));
+  const labelNames = labels.map((l) => l.toLowerCase());
+  const hasGenericTaskLabel = labelNames.some((l) => /\b(bug|feature|enhancement|chore|refactor|documentation)\b/.test(l));
+  const hasOpportunityLabel = labelNames.some((l) => /bounty|grant|hiring|paid|contributor|rfp|job/.test(l));
+  const hasOpportunityText = explicitRequest.test(text) || /\b(hiring|freelance|contributor|moderator|community manager|bounty|grant|rfp|looking for)\b/i.test(text);
+  if (hasGenericTaskLabel && !hasOpportunityLabel && !hasOpportunityText) return false;
+  // reject obvious generic implementation/bug reports
+  if (/\b(bug report|feature request|implement|fix the|add support for)\b/i.test(text) && !hasOpportunityText) return false;
+  return hasOpportunityText || hasOpportunityLabel;
 }

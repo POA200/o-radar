@@ -8,10 +8,23 @@ const SOURCE = "GITHUB_ISSUE" as const;
 
 export const DEFAULT_GITHUB_KEYWORDS = [
   "looking for designer",
+  "looking for developer",
+  "looking for frontend developer",
+  "hiring designer",
+  "graphic designer",
+  "branding designer",
+  "community manager",
+  "community moderator",
+  "freelance designer",
+  "freelance developer",
+  "paid contributor",
+  "open bounty",
+  "Web3 hiring",
+  "ecosystem hiring",
+  "request for proposal",
   "grant proposal",
   "bounty",
   "smart contract audit",
-  "frontend",
   "UI overhaul",
 ] as const;
 

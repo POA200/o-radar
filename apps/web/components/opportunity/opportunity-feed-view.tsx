@@ -45,6 +45,7 @@ export function OpportunityFeedView({
   const [confidenceFilter, setConfidenceFilter] = React.useState<string>(
     initialFilters?.confidence ?? "all",
   );
+  const [freshnessFilter, setFreshnessFilter] = React.useState<string>("all");
   const [huntMessage, setHuntMessage] = React.useState("");
   const [isHunting, startHunt] = React.useTransition();
 
@@ -110,9 +111,15 @@ export function OpportunityFeedView({
           return false;
       }
 
+      if (freshnessFilter !== "all") {
+        const isStale = Boolean((item as { isStale?: boolean }).isStale);
+        if (freshnessFilter === "recent" && isStale) return false;
+        if (freshnessFilter === "stale" && !isStale) return false;
+      }
+
       return true;
     });
-  }, [opportunities, search, sourceFilter, typeFilter, confidenceFilter]);
+  }, [opportunities, search, sourceFilter, typeFilter, confidenceFilter, freshnessFilter]);
 
   return (
     <div className="space-y-4">
@@ -165,6 +172,18 @@ export function OpportunityFeedView({
                 <SelectItem value="CONFIRMED">Confirmed Only</SelectItem>
                 <SelectItem value="SPECULATIVE">Prospect Signals</SelectItem>
                 <SelectItem value="STALE">Stale Listings</SelectItem>
+              </SelectContent>
+            </Select>
+
+            {/* Freshness select */}
+            <Select value={freshnessFilter} onValueChange={setFreshnessFilter}>
+              <SelectTrigger className="h-8 text-xs font-mono w-[120px] bg-secondary/50 border-border">
+                <SelectValue placeholder="Freshness" />
+              </SelectTrigger>
+              <SelectContent className="bg-popover border-border">
+                <SelectItem value="all">All Freshness</SelectItem>
+                <SelectItem value="recent">Recent</SelectItem>
+                <SelectItem value="stale">Stale</SelectItem>
               </SelectContent>
             </Select>
 
@@ -263,6 +282,7 @@ export function OpportunityFeedView({
                   setSourceFilter("all");
                   setTypeFilter("all");
                   setConfidenceFilter("all");
+                  setFreshnessFilter("all");
                   router.push("?", { scroll: false });
                 }}
               >
