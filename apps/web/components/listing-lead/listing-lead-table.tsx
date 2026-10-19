@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Search,
@@ -93,7 +94,7 @@ function formatUsd(value: number | null) {
   }).format(value);
 }
 
-const STATUS_OPTIONS = [
+export const STATUS_OPTIONS = [
   "DISCOVERED",
   "RESEARCHING",
   "QUALIFIED",
@@ -124,6 +125,7 @@ export function ListingLeadTable({ leads }: Props) {
   const [priorityFilter, setPriorityFilter] = React.useState("all");
   const [followUpFilter, setFollowUpFilter] = React.useState("all");
   const [sortByFollowUp, setSortByFollowUp] = React.useState(false);
+  const [qualificationFilter, setQualificationFilter] = React.useState("all");
   const [editing, setEditing] = React.useState<ListingLeadItem | null>(null);
   const [open, setOpen] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
@@ -240,6 +242,31 @@ export function ListingLeadTable({ leads }: Props) {
       if (statusFilter !== "all" && l.listingStatus !== statusFilter) return false;
       if (priorityFilter !== "all" && String(l.priority) !== priorityFilter) return false;
       if (followUpFilter !== "all" && followUpBucket(l.nextFollowUpAt) !== followUpFilter) return false;
+      if (qualificationFilter !== "all") {
+        const sc = scoreProspect({
+          chain: l.chain,
+          tokenAddress: l.contractAddress,
+          projectName: l.projectName,
+          tokenSymbol: l.tokenSymbol,
+          websiteUrl: l.websiteUrl,
+          xUrl: l.xUrl,
+          telegramUrl: l.telegramUrl,
+          discordUrl: l.discordUrl,
+          sourceUrl: l.sourceUrl,
+          volume24hUsd: l.volume24hUsd,
+          liquidityUsd: null,
+          marketCap: null,
+          marketCapSource: null,
+          priceUsd: null,
+          description: null,
+        });
+        const hasNotes = !!(l.notes && l.notes.trim());
+        const hasContact = !!(l.contactName || l.contactEmail || l.contactTelegram);
+        if (qualificationFilter === "high" && sc.label !== "High priority") return false;
+        if (qualificationFilter === "promising" && sc.label !== "Promising") return false;
+        if (qualificationFilter === "needs-research" && hasNotes) return false;
+        if (qualificationFilter === "missing-contact" && hasContact) return false;
+      }
       return true;
     }).sort((a, b) => {
       if (!sortByFollowUp) return 0;
@@ -247,7 +274,7 @@ export function ListingLeadTable({ leads }: Props) {
       const bD = b.nextFollowUpAt ? new Date(b.nextFollowUpAt).getTime() : Infinity;
       return aD - bD;
     });
-  }, [leads, search, chainFilter, statusFilter, priorityFilter, followUpFilter, sortByFollowUp]);
+  }, [leads, search, chainFilter, statusFilter, priorityFilter, followUpFilter, sortByFollowUp, qualificationFilter]);
 
   const emptyForm: ListingLeadInput = {
     projectName: "",
@@ -375,6 +402,18 @@ export function ListingLeadTable({ leads }: Props) {
               <input type="checkbox" checked={sortByFollowUp} onChange={(e) => setSortByFollowUp(e.target.checked)} />
               Sort by follow-up
             </label>
+            <Select value={qualificationFilter} onValueChange={setQualificationFilter}>
+              <SelectTrigger className="h-8 text-xs font-mono w-[150px] bg-secondary/50 border-border">
+                <SelectValue placeholder="Qualification" />
+              </SelectTrigger>
+              <SelectContent className="bg-popover border-border">
+                <SelectItem value="all">All Leads</SelectItem>
+                <SelectItem value="high">High-scoring</SelectItem>
+                <SelectItem value="promising">Promising</SelectItem>
+                <SelectItem value="needs-research">Needs research</SelectItem>
+                <SelectItem value="missing-contact">Missing contact</SelectItem>
+              </SelectContent>
+            </Select>
             <Select value={priorityFilter} onValueChange={setPriorityFilter}>
               <SelectTrigger className="h-8 text-xs font-mono w-[110px] bg-secondary/50 border-border">
                 <SelectValue placeholder="Priority" />
@@ -577,7 +616,9 @@ export function ListingLeadTable({ leads }: Props) {
                                 <input type="checkbox" checked={selected.has(i)} onChange={() => toggleSelect(i)} disabled={!!r.alreadySaved} />
                                 {r.alreadySaved && <span className="ml-1 text-[10px] text-muted-foreground">Already saved</span>}
                               </TableCell>
-                              <TableCell className="font-medium">{r.projectName}</TableCell>
+                              <TableCell className="font-medium">
+                                {r.projectName}
+                              </TableCell>
                               <TableCell className="font-mono text-xs">{r.tokenSymbol ?? "—"}</TableCell>
                               <TableCell>{r.chain ?? "—"}</TableCell>
                               <TableCell className="font-mono text-xs">{formatUsd(r.volume24hUsd)}</TableCell>
@@ -644,7 +685,7 @@ export function ListingLeadTable({ leads }: Props) {
                 <TableRow key={l.id}>
                   <TableCell className="font-medium">
                     <div className="flex items-center gap-1.5">
-                      {l.projectName}
+                      <Link href={`/listing-leads/${l.id}`} className="text-primary hover:underline">{l.projectName}</Link>
                       {l.xUrl && (
                         <a href={l.xUrl} target="_blank" rel="noreferrer" className="text-muted-foreground hover:text-primary">
                           <ExternalLink className="size-3" />
@@ -656,6 +697,28 @@ export function ListingLeadTable({ leads }: Props) {
                   <TableCell>{l.chain ?? "—"}</TableCell>
                   <TableCell className="font-mono text-xs">{formatUsd(l.volume24hUsd)}</TableCell>
                   <TableCell className="font-mono text-xs">{l.holderCount ?? "N/A"}</TableCell>
+                  <TableCell className="font-mono text-xs" title="Heuristic based on available data; not verified listing intent.">
+                    {(() => {
+                      const sc = scoreProspect({
+                        chain: l.chain,
+                        tokenAddress: l.contractAddress,
+                        projectName: l.projectName,
+                        tokenSymbol: l.tokenSymbol,
+                        websiteUrl: l.websiteUrl,
+                        xUrl: l.xUrl,
+                        telegramUrl: l.telegramUrl,
+                        discordUrl: l.discordUrl,
+                        sourceUrl: l.sourceUrl,
+                        volume24hUsd: l.volume24hUsd,
+                        liquidityUsd: null,
+                        marketCap: null,
+                        marketCapSource: null,
+                        priceUsd: null,
+                        description: null,
+                      });
+                      return `${sc.score} · ${sc.label}`;
+                    })()}
+                  </TableCell>
                   <TableCell>
                     <StatusBadge status={l.listingStatus} label={listingLeadStatusLabel(l.listingStatus)} />
                   </TableCell>
