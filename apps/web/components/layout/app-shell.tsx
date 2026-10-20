@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   Compass,
   Briefcase,
+  Users,
   Bookmark,
   Settings,
   Radar,
@@ -40,6 +41,7 @@ const navItems = [
   { href: "/", label: "Overview", icon: LayoutDashboard },
   { href: "/discover", label: "Discover", icon: Compass },
   { href: "/leads", label: "My Leads", icon: Briefcase },
+  { href: "/leads/clients", label: "Potential Clients", icon: Users },
   { href: "/listing-leads", label: "Listing Leads", icon: Building2 },
   { href: "/saved", label: "Saved", icon: Bookmark },
   { href: "/settings", label: "Settings", icon: Settings },
@@ -212,7 +214,7 @@ export function AppShell({ user, lastSyncTime, activeLeadsCount, children }: App
         </header>
 
         {/* Page Content */}
-        <main className="flex-1 overflow-y-auto">
+        <main className="flex-1 min-w-0 overflow-y-auto overflow-x-clip">
           {children}
         </main>
       </div>
