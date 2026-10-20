@@ -35,7 +35,7 @@ export default async function OnboardingPage() {
       <div className="onboarding-top">
         <div className="brand">
           <span className="brand-mark">
-            <Radar size={17} strokeWidth={2.5} />
+            <img src="/o-radar-logo.svg" alt="O-Radar" className="size-4" />
           </span>
           <span>O-Radar</span>
         </div>

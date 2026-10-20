@@ -15,7 +15,7 @@ export default function SignInPage() {
         <div className="auth-showcase-top">
           <div className="brand auth-brand">
             <span className="brand-mark">
-              <Radar size={17} strokeWidth={2.5} />
+              <img src="/o-radar-logo.svg" alt="O-Radar" className="size-4" />
             </span>
             <span>O-Radar</span>
           </div>
@@ -62,7 +62,7 @@ export default function SignInPage() {
       <section className="auth-panel">
         <div className="auth-mobile-brand brand">
           <span className="brand-mark">
-            <Radar size={17} strokeWidth={2.5} />
+            <img src="/o-radar-logo.svg" alt="O-Radar" className="size-4" />
           </span>
           <span>O-Radar</span>
         </div>

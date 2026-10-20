@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { requireOnboardedUser } from "../../../src/require-user";
 import { ListingLeadEditor } from "@/components/listing-lead/listing-lead-editor";
+import { EnrichMetadataButton } from "@/components/listing-lead/enrich-metadata";
 import { LiveMarketDataCard } from "@/components/listing-lead/live-market-data";
 import { listingLeadStatusLabel } from "@/lib/listing-lead-status";
 import { scoreProspect } from "@/lib/prospect-score";
@@ -96,6 +97,7 @@ export default async function ListingLeadResearchPage({
             <Badge variant="outline">{item.chain ?? "—"}</Badge>
             <Badge variant="outline">Priority {item.priority}</Badge>
             <ListingLeadEditor lead={item} />
+            <EnrichMetadataButton leadId={item.id} />
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">

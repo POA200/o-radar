@@ -103,7 +103,7 @@ export function AppShell({ user, lastSyncTime, activeLeadsCount, children }: App
         {/* Brand */}
         <div className="flex h-16 items-center gap-2.5 border-b border-border/80 px-5">
           <div className="grid size-7 place-items-center rounded-md border border-primary/40 bg-primary/10 text-primary shadow-xs">
-            <Radar className="size-4" />
+            <img src="/o-radar-logo.svg" alt="O-Radar" className="size-4" />
           </div>
           <div className="flex flex-col">
             <span className="font-semibold text-sm tracking-tight text-foreground">O-Radar</span>
@@ -160,7 +160,7 @@ export function AppShell({ user, lastSyncTime, activeLeadsCount, children }: App
         <header className="flex h-14 items-center justify-between border-b border-border/80 bg-card/60 px-4 backdrop-blur-md lg:hidden">
           <div className="flex items-center gap-2">
             <div className="grid size-6 place-items-center rounded border border-primary/40 bg-primary/10 text-primary">
-              <Radar className="size-3.5" />
+              <img src="/o-radar-logo.svg" alt="O-Radar" className="size-3.5" />
             </div>
             <span className="font-semibold text-sm tracking-tight text-foreground">O-Radar</span>
           </div>
@@ -180,7 +180,7 @@ export function AppShell({ user, lastSyncTime, activeLeadsCount, children }: App
               <SheetContent side="left" className="w-72 p-0 flex flex-col bg-card">
                 <SheetHeader className="h-16 border-b border-border/80 px-5 flex flex-row items-center gap-2.5">
                   <div className="grid size-7 place-items-center rounded-md border border-primary/40 bg-primary/10 text-primary">
-                    <Radar className="size-4" />
+                    <img src="/o-radar-logo.svg" alt="O-Radar" className="size-4" />
                   </div>
                   <SheetTitle className="font-semibold text-sm text-foreground">O-Radar</SheetTitle>
                 </SheetHeader>

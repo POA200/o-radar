@@ -763,3 +763,74 @@ export async function fetchLiveMarketData(params: { provider: "dex" | "gecko"; c
     tokenSymbol: str(projectAttrs?.symbol),
   };
 }
+
+
+// ===== CoinGecko metadata enrichment (read-only enrichment) =====
+
+const COINGECKO_PLATFORMS: Record<string, string> = {
+  solana: "solana",
+  ethereum: "ethereum",
+  bsc: "binance-smart-chain",
+  polygon: "polygon-pos",
+  avalanche: "avalanche",
+  base: "base",
+  arbitrum: "arbitrum-one",
+  optimism: "optimistic-ethereum",
+  fantom: "fantom",
+};
+
+export async function enrichListingLeadWithCoinGecko(id: string): Promise<{ added: string[]; already: string[]; matched: boolean; error?: string }> {
+  await requireOnboardedUser();
+  const lead = await prisma.listingLead.findUnique({ where: { id } });
+  if (!lead) throw new Error("Lead not found");
+  const chain = normalizeChain(lead.chain);
+  const addr = normalizeAddress(lead.contractAddress);
+  if (!chain || !addr) return { added: [], already: [], matched: false, error: "Chain and contract address are required." };
+  const platform = COINGECKO_PLATFORMS[chain];
+  if (!platform) return { added: [], already: [], matched: false, error: `Unsupported network for CoinGecko: ${chain}` };
+
+  const apiKey = process.env.COINGECKO_API_KEY;
+  const url = `https://api.coingecko.com/api/v3/coins/${encodeURIComponent(platform)}/contract/${encodeURIComponent(addr)}`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 12000);
+  let res: Response;
+  try {
+    res = await fetch(url, { signal: controller.signal, headers: apiKey ? { "x-cg-demo-api-key": apiKey } : {} });
+  } catch (e) {
+    clearTimeout(timer);
+    return { added: [], already: [], matched: false, error: e instanceof Error ? e.message : "Network error" };
+  }
+  clearTimeout(timer);
+  if (res.status === 404) return { added: [], already: [], matched: false, error: "Token not found on CoinGecko." };
+  if (res.status === 429) return { added: [], already: [], matched: false, error: "CoinGecko rate limit exceeded (HTTP 429)." };
+  if (!res.ok) return { added: [], already: [], matched: false, error: `CoinGecko request failed: ${res.status}` };
+
+  let data: any;
+  try { data = await res.json(); } catch { return { added: [], already: [], matched: false, error: "Malformed response" }; }
+
+  const links = data?.links ?? {};
+  const homepage = Array.isArray(links.homepage) ? links.homepage.find((u: unknown) => typeof u === "string" && u.trim()) : null;
+  const twitter = typeof links.twitter_screen_name === "string" && links.twitter_screen_name.trim() ? `https://x.com/${links.twitter_screen_name.trim()}` : null;
+  const telegram = typeof links.telegram_channel_identifier === "string" && links.telegram_channel_identifier.trim() ? `https://t.me/${links.telegram_channel_identifier.trim()}` : null;
+  const chatUrls = Array.isArray(links.chat_url) ? links.chat_url : [];
+  const discord = chatUrls.find((u: unknown) => typeof u === "string" && /discord/i.test(u)) ?? null;
+
+  const validUrl = (u: string | null) => {
+    if (!u) return null;
+    try { const x = new URL(u); return x.protocol === "http:" || x.protocol === "https:" ? u : null; } catch { return null; }
+  };
+
+  const added: string[] = [];
+  const already: string[] = [];
+  const dataUpdate: Record<string, string> = {};
+  if (lead.websiteUrl) already.push("website"); else if (validUrl(homepage)) { dataUpdate.websiteUrl = validUrl(homepage)!; added.push("website"); }
+  if (lead.xUrl) already.push("x"); else if (validUrl(twitter)) { dataUpdate.xUrl = validUrl(twitter)!; added.push("x"); }
+  if (lead.telegramUrl) already.push("telegram"); else if (validUrl(telegram)) { dataUpdate.telegramUrl = validUrl(telegram)!; added.push("telegram"); }
+  if (lead.discordUrl) already.push("discord"); else if (validUrl(discord)) { dataUpdate.discordUrl = validUrl(discord)!; added.push("discord"); }
+
+  if (Object.keys(dataUpdate).length > 0) {
+    await prisma.listingLead.update({ where: { id }, data: dataUpdate });
+  }
+
+  return { added, already, matched: true };
+}
