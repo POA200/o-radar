@@ -32,8 +32,9 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { StatusBadge, type StatusType } from "@/components/shared/status-badge";
 import { EmptyState } from "@/components/shared/empty-state";
 import { SearchInput } from "@/components/shared/search-input";
-import { updateLeadNotes, updateLeadStatus } from "@/app/actions";
+import { updateLeadNotes, updateLeadStatus, updateLeadAppliedAt } from "@/app/actions";
 import { cn } from "@/lib/utils";
+import { leadStatusLabel, followUpBucket } from "@/lib/lead-status";
 
 export interface LeadItem {
   id: string;
@@ -47,6 +48,7 @@ export interface LeadItem {
     | "READY_TO_CONTACT"
     | "CONTACTED"
     | "REPLIED"
+    | "APPLIED"
     | "IN_PROGRESS"
     | "WON"
     | "LOST"
@@ -60,6 +62,7 @@ export interface LeadItem {
   priority: number;
   savedAt: string;
   lastContactedAt: string | null;
+  appliedAt: string | null;
   nextFollowUpAt: string | null;
   updatedAt?: string;
 }
@@ -75,6 +78,7 @@ const statusOptions: LeadItem["status"][] = [
   "READY_TO_CONTACT",
   "CONTACTED",
   "REPLIED",
+  "APPLIED",
   "IN_PROGRESS",
   "WON",
   "LOST",
@@ -85,6 +89,8 @@ const statusOptions: LeadItem["status"][] = [
 export function ModernLeadTable({ leads }: LeadTableProps) {
   const [filter, setFilter] = React.useState<string>("active");
   const [search, setSearch] = React.useState("");
+  const [followUpFilter, setFollowUpFilter] = React.useState("all");
+  const [sortByFollowUp, setSortByFollowUp] = React.useState(false);
 
   const filtered = React.useMemo(() => {
     return leads.filter((lead) => {
@@ -103,9 +109,17 @@ export function ModernLeadTable({ leads }: LeadTableProps) {
       if (filter === "active") return lead.status !== "ARCHIVED";
       if (filter !== "all") return lead.status === filter;
 
+      // 3. Follow-up filter
+      if (followUpFilter !== "all" && followUpBucket(lead.nextFollowUpAt) !== followUpFilter) return false;
+
       return true;
+    }).sort((a, b) => {
+      if (!sortByFollowUp) return 0;
+      const aD = a.nextFollowUpAt ? new Date(a.nextFollowUpAt).getTime() : Infinity;
+      const bD = b.nextFollowUpAt ? new Date(b.nextFollowUpAt).getTime() : Infinity;
+      return aD - bD;
     });
-  }, [leads, filter, search]);
+  }, [leads, filter, search, followUpFilter, sortByFollowUp]);
 
   return (
     <div className="space-y-4">
@@ -119,6 +133,22 @@ export function ModernLeadTable({ leads }: LeadTableProps) {
           />
         </div>
 
+        <Select value={followUpFilter} onValueChange={setFollowUpFilter}>
+          <SelectTrigger className="h-8 text-xs font-mono w-[130px] bg-secondary/50 border-border">
+            <SelectValue placeholder="Follow-up" />
+          </SelectTrigger>
+          <SelectContent className="bg-popover border-border">
+            <SelectItem value="all">All Follow-ups</SelectItem>
+            <SelectItem value="overdue">Overdue</SelectItem>
+            <SelectItem value="today">Due Today</SelectItem>
+            <SelectItem value="upcoming">Upcoming</SelectItem>
+            <SelectItem value="none">No Follow-up</SelectItem>
+          </SelectContent>
+        </Select>
+        <label className="flex items-center gap-1 text-xs">
+          <input type="checkbox" checked={sortByFollowUp} onChange={(e) => setSortByFollowUp(e.target.checked)} />
+          Sort by follow-up
+        </label>
         <Tabs value={filter} onValueChange={setFilter} className="w-auto">
           <TabsList className="h-8 bg-secondary/60 p-0.5">
             <TabsTrigger value="active" className="text-xs h-7 px-3 font-mono">
@@ -174,6 +204,7 @@ export function ModernLeadTable({ leads }: LeadTableProps) {
                 <TableHead className="w-[180px]">Contact</TableHead>
                 <TableHead className="min-w-[220px]">Opportunity</TableHead>
                 <TableHead className="w-[150px]">Status</TableHead>
+                <TableHead className="w-[150px]">Applied</TableHead>
                 <TableHead className="min-w-[200px]">Outreach Notes</TableHead>
                 <TableHead className="w-[60px] text-right">Link</TableHead>
               </TableRow>
@@ -259,7 +290,7 @@ function LeadRowItem({ lead }: { lead: LeadItem }) {
         >
           <SelectTrigger className="h-7 text-xs font-mono bg-secondary/50 border-border/80 w-[130px]">
             <SelectValue>
-              <StatusBadge status={lead.status} />
+              <StatusBadge status={lead.status} label={leadStatusLabel(lead.status)} />
             </SelectValue>
           </SelectTrigger>
           <SelectContent className="bg-popover border-border">

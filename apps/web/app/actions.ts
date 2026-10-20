@@ -9,7 +9,7 @@ import { requireOnboardedUser } from "../src/require-user";
 import { signOut } from "../auth";
 import { z } from "zod";
 
-type LeadStatus = "DISCOVERED" | "RESEARCHING" | "QUALIFIED" | "READY_TO_CONTACT" | "CONTACTED" | "REPLIED" | "IN_PROGRESS" | "WON" | "LOST" | "CONVERTED" | "ARCHIVED";
+type LeadStatus = "DISCOVERED" | "RESEARCHING" | "QUALIFIED" | "READY_TO_CONTACT" | "CONTACTED" | "REPLIED" | "APPLIED" | "IN_PROGRESS" | "WON" | "LOST" | "CONVERTED" | "ARCHIVED";
 
 export type HuntSource = "github" | "rss" | "all";
 
@@ -174,19 +174,34 @@ export async function archiveOpportunity(opportunityId: string) {
   revalidatePath("/saved");
 }
 
-export async function updateLeadStatus(leadId: string, status: LeadStatus) {
+export async function updateLeadStatus(leadId: string, status: LeadStatus, appliedAt?: string | null) {
   const user = await requireOnboardedUser();
+  const existing = await prisma.lead.findFirst({ where: { id: leadId, userId: user.id }, select: { appliedAt: true } });
+  if (!existing) return;
+  const data: { status: LeadStatus; lastContactedAt?: Date; appliedAt?: Date | null } = { status };
+  if (status === "CONTACTED") data.lastContactedAt = new Date();
+  if (appliedAt !== undefined) {
+    data.appliedAt = appliedAt ? new Date(appliedAt) : null;
+  } else if (status === "APPLIED" && existing.appliedAt === null) {
+    data.appliedAt = new Date();
+  }
   await prisma.lead.updateMany({
     where: { id: leadId, userId: user.id },
-    data: {
-      status,
-      ...(status === "CONTACTED" ? { lastContactedAt: new Date() } : {}),
-    },
+    data,
   });
   revalidatePath("/");
   revalidatePath("/discover");
   revalidatePath("/leads");
   revalidatePath("/saved");
+}
+
+export async function updateLeadAppliedAt(leadId: string, appliedAt: string | null) {
+  const user = await requireOnboardedUser();
+  await prisma.lead.updateMany({
+    where: { id: leadId, userId: user.id },
+    data: { appliedAt: appliedAt ? new Date(appliedAt) : null },
+  });
+  revalidatePath("/leads");
 }
 
 export async function updateLeadNotes(leadId: string, notes: string) {

@@ -70,6 +70,7 @@ enum LeadStatus {
   READY_TO_CONTACT
   CONTACTED
   REPLIED
+  APPLIED
   IN_PROGRESS
   WON
   LOST
@@ -176,6 +177,7 @@ model Lead {
   priority      Int         @default(0)
   savedAt       DateTime    @default(now())
   lastContactedAt DateTime?
+  appliedAt       DateTime?
   nextFollowUpAt DateTime?
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt

@@ -48,6 +48,7 @@ export default async function LeadsPage() {
     priority: l.priority,
     savedAt: l.savedAt.toISOString(),
     lastContactedAt: l.lastContactedAt?.toISOString() ?? null,
+    appliedAt: l.appliedAt?.toISOString() ?? null,
     nextFollowUpAt: l.nextFollowUpAt?.toISOString() ?? null,
     updatedAt: l.updatedAt.toISOString(),
   }));
