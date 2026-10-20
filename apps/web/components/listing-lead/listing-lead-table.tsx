@@ -50,6 +50,7 @@ import {
 import {
   discoverDexScreener,
   discoverGeckoTerminal,
+  discoverListingLeads,
   type DexScreenerResult,
 } from "@/app/listing-leads/actions";
 import { scoreProspect } from "@/lib/prospect-score";
@@ -124,7 +125,7 @@ export function ListingLeadTable({ leads }: Props) {
   const [statusFilter, setStatusFilter] = React.useState("all");
   const [priorityFilter, setPriorityFilter] = React.useState("all");
   const [followUpFilter, setFollowUpFilter] = React.useState("all");
-  const [sortByFollowUp, setSortByFollowUp] = React.useState(false);
+  const [sortBy, setSortBy] = React.useState("newest");
   const [qualificationFilter, setQualificationFilter] = React.useState("all");
   const [editing, setEditing] = React.useState<ListingLeadItem | null>(null);
   const [open, setOpen] = React.useState(false);
@@ -132,12 +133,16 @@ export function ListingLeadTable({ leads }: Props) {
   const [error, setError] = React.useState<string | null>(null);
   const [discoverOpen, setDiscoverOpen] = React.useState(false);
   const [discoverSource, setDiscoverSource] = React.useState<"profiles" | "search">("profiles");
-  const [discoverProvider, setDiscoverProvider] = React.useState<"dex" | "gecko">("dex");
+  const [discoverProvider, setDiscoverProvider] = React.useState<"dex" | "gecko" | "all">("dex");
   const [discoverQuery, setDiscoverQuery] = React.useState("");
   const [discoverChain, setDiscoverChain] = React.useState("all");
   const [discoverMinVol, setDiscoverMinVol] = React.useState("");
   const [discoverMinLiq, setDiscoverMinLiq] = React.useState("");
+  const [discoverMaxAge, setDiscoverMaxAge] = React.useState("");
+  const [discoverHasWebsite, setDiscoverHasWebsite] = React.useState(false);
+  const [discoverHasSocial, setDiscoverHasSocial] = React.useState(false);
   const [discoverResults, setDiscoverResults] = React.useState<DexScreenerResult[]>([]);
+  const [discoverStats, setDiscoverStats] = React.useState<any>(null);
   const [discoverLoading, setDiscoverLoading] = React.useState(false);
   const [discoverError, setDiscoverError] = React.useState<string | null>(null);
   const [selected, setSelected] = React.useState<Set<number>>(new Set());
@@ -149,7 +154,19 @@ export function ListingLeadTable({ leads }: Props) {
     setSelected(new Set());
     try {
       const res =
-        discoverProvider === "gecko"
+        discoverProvider === "all"
+          ? (await discoverListingLeads({
+              source: discoverSource === "search" ? "search" : "new_pools",
+              query: discoverQuery,
+              chain: discoverChain,
+              network: discoverChain,
+              minVolume: discoverMinVol ? Number(discoverMinVol) : undefined,
+              minLiquidity: discoverMinLiq ? Number(discoverMinLiq) : undefined,
+              maxAgeDays: discoverMaxAge ? Number(discoverMaxAge) : undefined,
+              hasWebsite: discoverHasWebsite || undefined,
+              hasSocial: discoverHasSocial || undefined,
+            })).results
+          : discoverProvider === "gecko"
           ? await discoverGeckoTerminal({
               source: discoverSource === "search" ? "search" : "new_pools",
               query: discoverQuery,
@@ -164,7 +181,9 @@ export function ListingLeadTable({ leads }: Props) {
               minVolume: discoverMinVol ? Number(discoverMinVol) : undefined,
               minLiquidity: discoverMinLiq ? Number(discoverMinLiq) : undefined,
             });
-      setDiscoverResults(res);
+      if (res && (res as any).stats) setDiscoverStats((res as any).stats);
+      else setDiscoverStats(null);
+      setDiscoverResults(Array.isArray(res) ? res : (res as any).results ?? []);
     } catch (e) {
       setDiscoverError(e instanceof Error ? e.message : "Discovery failed");
     } finally {
@@ -197,7 +216,7 @@ export function ListingLeadTable({ leads }: Props) {
           xUrl: r.xUrl ?? "",
           telegramUrl: r.telegramUrl ?? "",
           discordUrl: r.discordUrl ?? "",
-          discoverySource: discoverProvider === "gecko" ? "GECKO_TERMINAL" : "DEX_SCREENER",
+          discoverySource: r.provider === "gecko" ? "GECKO_TERMINAL" : r.provider === "dex" ? "DEX_SCREENER" : (discoverProvider === "gecko" ? "GECKO_TERMINAL" : "DEX_SCREENER"),
           sourceUrl: r.sourceUrl ?? "",
           volume24hUsd: r.volume24hUsd,
           holderCount: null,
@@ -269,12 +288,18 @@ export function ListingLeadTable({ leads }: Props) {
       }
       return true;
     }).sort((a, b) => {
-      if (!sortByFollowUp) return 0;
-      const aD = a.nextFollowUpAt ? new Date(a.nextFollowUpAt).getTime() : Infinity;
-      const bD = b.nextFollowUpAt ? new Date(b.nextFollowUpAt).getTime() : Infinity;
-      return aD - bD;
+      if (sortBy === "newest") return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      if (sortBy === "oldest") return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      if (sortBy === "followup") {
+        const aD = a.nextFollowUpAt ? new Date(a.nextFollowUpAt).getTime() : Infinity;
+        const bD = b.nextFollowUpAt ? new Date(b.nextFollowUpAt).getTime() : Infinity;
+        return aD - bD;
+      }
+      if (sortBy === "priority") return (b.priority ?? 0) - (a.priority ?? 0);
+      if (sortBy === "volume") return (b.volume24hUsd ?? 0) - (a.volume24hUsd ?? 0);
+      return 0;
     });
-  }, [leads, search, chainFilter, statusFilter, priorityFilter, followUpFilter, sortByFollowUp, qualificationFilter]);
+  }, [leads, search, chainFilter, statusFilter, priorityFilter, followUpFilter, qualificationFilter, sortBy]);
 
   const emptyForm: ListingLeadInput = {
     projectName: "",
@@ -398,10 +423,21 @@ export function ListingLeadTable({ leads }: Props) {
                 <SelectItem value="none">No Follow-up</SelectItem>
               </SelectContent>
             </Select>
-            <label className="flex items-center gap-1 text-xs">
-              <input type="checkbox" checked={sortByFollowUp} onChange={(e) => setSortByFollowUp(e.target.checked)} />
-              Sort by follow-up
-            </label>
+            <div className="space-y-1">
+              <Label className="text-xs">Sort by</Label>
+              <Select value={sortBy} onValueChange={setSortBy}>
+                <SelectTrigger className="h-8 text-xs font-mono w-[150px] bg-secondary/50 border-border">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-popover border-border">
+                  <SelectItem value="newest">Newest first</SelectItem>
+                  <SelectItem value="oldest">Oldest first</SelectItem>
+                  <SelectItem value="followup">Follow-up date</SelectItem>
+                  <SelectItem value="priority">Highest priority</SelectItem>
+                  <SelectItem value="volume">Highest volume</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             <Select value={qualificationFilter} onValueChange={setQualificationFilter}>
               <SelectTrigger className="h-8 text-xs font-mono w-[150px] bg-secondary/50 border-border">
                 <SelectValue placeholder="Qualification" />
@@ -548,7 +584,7 @@ export function ListingLeadTable({ leads }: Props) {
                 <DialogHeader>
                   <DialogTitle>Discover Projects via DEX Screener</DialogTitle>
                 </DialogHeader>
-                <div className="flex flex-wrap gap-2 items-end">
+                <div className="flex flex-wrap gap-2 items-end min-w-0">
                   <div className="space-y-1">
                     <Label className="text-xs">Provider</Label>
                     <Select value={discoverProvider} onValueChange={(v) => setDiscoverProvider(v as "dex" | "gecko")}>
@@ -556,6 +592,7 @@ export function ListingLeadTable({ leads }: Props) {
                       <SelectContent className="bg-popover border-border">
                         <SelectItem value="dex">DEX Screener</SelectItem>
                         <SelectItem value="gecko">GeckoTerminal</SelectItem>
+                        <SelectItem value="all">All providers</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -587,11 +624,26 @@ export function ListingLeadTable({ leads }: Props) {
                     <Label className="text-xs">Min Liquidity</Label>
                     <Input type="number" value={discoverMinLiq} onChange={(e) => setDiscoverMinLiq(e.target.value)} className="w-[110px]" />
                   </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Max age (days)</Label>
+                    <Input type="number" value={discoverMaxAge} onChange={(e) => setDiscoverMaxAge(e.target.value)} className="w-[100px]" />
+                  </div>
+                  <label className="flex items-center gap-1 text-xs">
+                    <input type="checkbox" checked={discoverHasWebsite} onChange={(e) => setDiscoverHasWebsite(e.target.checked)} /> Has website
+                  </label>
+                  <label className="flex items-center gap-1 text-xs">
+                    <input type="checkbox" checked={discoverHasSocial} onChange={(e) => setDiscoverHasSocial(e.target.checked)} /> Has social
+                  </label>
                   <Button size="sm" disabled={discoverLoading} onClick={handleDiscover}>
                     {discoverLoading ? "Loading..." : "Fetch"}
                   </Button>
                 </div>
                 {discoverError && <p className="text-xs text-destructive">{discoverError}</p>}
+                {discoverStats && (
+                  <p className="text-xs text-muted-foreground break-words">
+                    Fetched: DEX {discoverStats.dex?.fetched ?? 0}, Gecko {discoverStats.gecko?.fetched ?? 0}; rejected {discoverStats.rejected ?? 0}; unknown age {discoverStats.unknownAge ?? 0}; unknown liquidity {discoverStats.unknownLiquidity ?? 0}; duplicates {discoverStats.duplicates ?? 0}
+                  </p>
+                )}
                 {discoverResults.length > 0 && (
                   <>
                     <div className="rounded-lg border border-border/80 overflow-x-auto max-h-[40vh]">

@@ -144,8 +144,10 @@ export type DexScreenerResult = {
   marketCapSource: "marketCap" | "fdv" | null;
   priceUsd: string | null;
   description: string | null;
+  createdAt?: string | null;
   alreadySaved?: boolean;
-};
+  provider?: "dex" | "gecko";
+}
 
 const DEX_API = "https://api.dexscreener.com";
 const TIMEOUT_MS = 12000;
@@ -320,6 +322,7 @@ export async function discoverDexScreener(params: {
         marketCap: num(best?.marketCap) ?? num(best?.fdv),
         marketCapSource: num(best?.marketCap) != null ? "marketCap" : (num(best?.fdv) != null ? "fdv" : null),
         priceUsd: str(best?.priceUsd),
+        createdAt: str(best?.pairCreatedAt) ?? str(best?.createdAt),
         description: str(r.description),
       });
     }
@@ -393,6 +396,7 @@ export async function discoverDexScreener(params: {
         marketCap: num(r.marketCap) ?? num(r.fdv),
         marketCapSource: num(r.marketCap) != null ? "marketCap" : (num(r.fdv) != null ? "fdv" : null),
         priceUsd: str(r.priceUsd),
+        createdAt: str(r.pairCreatedAt) ?? str(r.createdAt),
         description: null,
       });
     }
@@ -401,11 +405,13 @@ export async function discoverDexScreener(params: {
   // Normalize keys and mark already-saved leads.
   const existing = await prisma.listingLead.findMany({ select: { chain: true, contractAddress: true } });
   const existingKeys = new Set(existing.map((e) => leadKey(e.chain, e.contractAddress)));
-  const normalized = results.map((r) => {
-    const chain = normalizeChain(r.chain);
-    const tokenAddress = normalizeAddress(r.tokenAddress);
-    return { ...r, chain, tokenAddress, alreadySaved: existingKeys.has(leadKey(chain, tokenAddress)) };
-  });
+  const normalized = results.map((r) => ({
+    ...r,
+    chain: normalizeChain(r.chain),
+    tokenAddress: normalizeAddress(r.tokenAddress),
+    provider: "dex" as const,
+    alreadySaved: existingKeys.has(leadKey(normalizeChain(r.chain), normalizeAddress(r.tokenAddress))),
+  })) as DexScreenerResult[];
   return normalized.slice(0, 50);
 }
 
@@ -592,11 +598,13 @@ export async function discoverGeckoTerminal(params: {
   // Normalize keys and mark already-saved leads.
   const existing = await prisma.listingLead.findMany({ select: { chain: true, contractAddress: true } });
   const existingKeys = new Set(existing.map((e) => leadKey(e.chain, e.contractAddress)));
-  const normalized = results.map((r) => {
-    const chain = normalizeChain(r.chain);
-    const tokenAddress = normalizeAddress(r.tokenAddress);
-    return { ...r, chain, tokenAddress, alreadySaved: existingKeys.has(leadKey(chain, tokenAddress)) };
-  });
+  const normalized = results.map((r) => ({
+    ...r,
+    chain: normalizeChain(r.chain),
+    tokenAddress: normalizeAddress(r.tokenAddress),
+    provider: "gecko" as const,
+    alreadySaved: existingKeys.has(leadKey(normalizeChain(r.chain), normalizeAddress(r.tokenAddress))),
+  })) as DexScreenerResult[];
   return normalized.slice(0, 50);
 }
 
@@ -833,4 +841,83 @@ export async function enrichListingLeadWithCoinGecko(id: string): Promise<{ adde
   }
 
   return { added, already, matched: true };
+}
+
+export async function discoverListingLeads(params: {
+  source: "profiles" | "search" | "new_pools";
+  query?: string;
+  chain?: string;
+  network?: string;
+  minVolume?: number;
+  minLiquidity?: number;
+  maxAgeDays?: number;
+  hasWebsite?: boolean;
+  hasSocial?: boolean;
+}): Promise<{ results: DexScreenerResult[]; stats: { dex: { fetched: number }; gecko: { fetched: number }; rejected: number; unknownAge: number; unknownLiquidity: number; duplicates: number } }> {
+  await requireOnboardedUser();
+  const [dexRes, geckoRes] = await Promise.allSettled([
+    discoverDexScreener({ source: params.source === "search" ? "search" : "profiles", query: params.query, chain: params.chain, minVolume: params.minVolume, minLiquidity: params.minLiquidity }),
+    discoverGeckoTerminal({ source: params.source === "search" ? "search" : "new_pools", query: params.query, network: params.network ?? params.chain, minVolume: params.minVolume, minLiquidity: params.minLiquidity }),
+  ]);
+  const dexResults = dexRes.status === "fulfilled" ? dexRes.value : [];
+  const geckoResults = geckoRes.status === "fulfilled" ? geckoRes.value : [];
+
+  let rejected = 0;
+  let unknownAge = 0;
+  let unknownLiquidity = 0;
+
+  const passes = (r: DexScreenerResult) => {
+    if (params.minVolume != null) {
+      if (r.volume24hUsd == null) { unknownLiquidity++; /* counted but still? */ }
+      if (r.volume24hUsd != null && r.volume24hUsd < params.minVolume) { rejected++; return false; }
+    }
+    if (params.minLiquidity != null) {
+      if (r.liquidityUsd == null) unknownLiquidity++;
+      if (r.liquidityUsd != null && r.liquidityUsd < params.minLiquidity) { rejected++; return false; }
+    }
+    if (params.maxAgeDays != null) {
+      const age = r.createdAt ? (Date.now() - new Date(r.createdAt).getTime()) / 86400000 : null;
+      if (age == null || Number.isNaN(age)) { unknownAge++; }
+      else if (age > params.maxAgeDays) { rejected++; return false; }
+    }
+    if (params.hasWebsite && !r.websiteUrl) { rejected++; return false; }
+    if (params.hasSocial && !(r.xUrl || r.telegramUrl || r.discordUrl)) { rejected++; return false; }
+    return true;
+  };
+
+  const filteredDex = dexResults.filter(passes);
+  const filteredGecko = geckoResults.filter(passes);
+
+  // merge + dedup
+  const grouped = new Map<string, DexScreenerResult[]>();
+  for (const r of [...filteredDex, ...filteredGecko]) {
+    const key = leadKey(r.chain, r.tokenAddress);
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key)!.push(r);
+  }
+  let duplicates = 0;
+  const merged: DexScreenerResult[] = [];
+  for (const [, cands] of grouped) {
+    if (cands.length > 1) duplicates += cands.length - 1;
+    let best = cands[0];
+    if (!best) continue;
+    for (const c of cands.slice(1)) {
+      const lBest = best.liquidityUsd ?? 0;
+      const lCur = c.liquidityUsd ?? 0;
+      if (lCur > lBest || (lCur === lBest && (c.volume24hUsd ?? 0) > (best.volume24hUsd ?? 0))) best = c;
+    }
+    merged.push(best as DexScreenerResult);
+  }
+
+  const existing = await prisma.listingLead.findMany({ select: { chain: true, contractAddress: true } });
+  const existingKeys = new Set(existing.map((e) => leadKey(e.chain, e.contractAddress)));
+  const normalized = merged.map((r) => ({
+    ...r,
+    chain: normalizeChain(r.chain),
+    tokenAddress: normalizeAddress(r.tokenAddress),
+    alreadySaved: existingKeys.has(leadKey(r.chain, r.tokenAddress)),
+  })) as DexScreenerResult[];
+
+  return { results: normalized.slice(0, 50), stats: { dex: { fetched: dexResults.length }, gecko: { fetched: geckoResults.length }, rejected, unknownAge, unknownLiquidity, duplicates } };
+
 }
