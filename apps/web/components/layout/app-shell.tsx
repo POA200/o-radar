@@ -60,6 +60,7 @@ function formatTimeAgo(timestamp?: Date | string | null) {
 export function AppShell({ user, lastSyncTime, activeLeadsCount, children }: AppShellProps) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = React.useState(false);
+  const [collapsed, setCollapsed] = React.useState(false);
 
   const syncLabel = formatTimeAgo(lastSyncTime);
   const initials = user.name
@@ -83,8 +84,8 @@ export function AppShell({ user, lastSyncTime, activeLeadsCount, children }: App
                 : "text-muted-foreground hover:bg-secondary hover:text-foreground",
             )}
           >
-            <Icon className={cn("size-4 shrink-0", isActive ? "text-primary" : "text-muted-foreground")} />
-            <span className="flex-1">{item.label}</span>
+            <span title={collapsed ? item.label : undefined}><Icon className={cn("size-4 shrink-0", isActive ? "text-primary" : "text-muted-foreground")} /></span>
+            {!collapsed && <span className="flex-1">{item.label}</span>}
             {item.href === "/leads" && typeof activeLeadsCount === "number" && activeLeadsCount > 0 && (
               <span className="grid size-5 place-items-center rounded bg-secondary font-mono text-[10px] text-muted-foreground">
                 {activeLeadsCount}
@@ -99,16 +100,22 @@ export function AppShell({ user, lastSyncTime, activeLeadsCount, children }: App
   return (
     <div className="flex min-h-screen bg-background text-foreground">
       {/* Desktop Persistent Sidebar */}
-      <aside className="hidden lg:flex w-64 flex-col border-r border-border/80 bg-card/50 backdrop-blur-md">
-        {/* Brand */}
-        <div className="flex h-16 items-center gap-2.5 border-b border-border/80 px-5">
-          <div className="grid size-7 place-items-center rounded-md border border-primary/40 bg-primary/10 text-primary shadow-xs">
-            <img src="/o-radar-logo.svg" alt="O-Radar" className="size-4" />
-          </div>
-          <div className="flex flex-col">
-            <span className="font-semibold text-sm tracking-tight text-foreground">O-Radar</span>
-            <span className="font-mono text-[9px] uppercase tracking-wider text-muted-foreground">Web3 Intelligence</span>
-          </div>
+      <aside className={cn("hidden lg:flex fixed left-0 top-0 h-[100dvh] flex-col border-r border-border/80 bg-card/50 backdrop-blur-md transition-all", collapsed ? "w-16" : "w-64")} style={{ zIndex: 40 }}>
+        <div className="flex h-16 items-center justify-between border-b border-border/80 px-3">
+          <button onClick={() => setCollapsed((v) => !v)} className="rounded-md p-1 hover:bg-secondary" aria-label="Toggle sidebar">
+            <Menu className="size-4" />
+          </button>
+          {!collapsed && (
+            <div className="flex items-center gap-2.5">
+              <div className="grid size-7 place-items-center rounded-md border border-primary/40 bg-primary/10 text-primary shadow-xs">
+                <img src="/o-radar-logo.svg" alt="O-Radar" className="size-4" />
+              </div>
+              <div className="flex flex-col">
+                <span className="font-semibold text-sm tracking-tight text-foreground">O-Radar</span>
+                <span className="font-mono text-[9px] uppercase tracking-wider text-muted-foreground">Web3 Intelligence</span>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Navigation */}
@@ -155,9 +162,9 @@ export function AppShell({ user, lastSyncTime, activeLeadsCount, children }: App
       </aside>
 
       {/* Main Content Area */}
-      <div className="flex flex-1 flex-col min-w-0">
+      <div className={cn("flex flex-1 flex-col min-w-0 transition-all", collapsed ? "lg:ml-16" : "lg:ml-64")}>
         {/* Mobile Topbar */}
-        <header className="flex h-14 items-center justify-between border-b border-border/80 bg-card/60 px-4 backdrop-blur-md lg:hidden">
+        <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-border/80 bg-card/60 px-4 backdrop-blur-md lg:hidden">
           <div className="flex items-center gap-2">
             <div className="grid size-6 place-items-center rounded border border-primary/40 bg-primary/10 text-primary">
               <img src="/o-radar-logo.svg" alt="O-Radar" className="size-3.5" />

@@ -717,93 +717,69 @@ export function ListingLeadTable({ leads }: Props) {
           description={search || chainFilter !== "all" || statusFilter !== "all" ? "No leads match the current filters." : "No listing leads yet. Create one to get started."}
         />
       ) : (
-        <div className="rounded-lg border border-border/80 overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Project</TableHead>
-                <TableHead>Symbol</TableHead>
-                <TableHead>Chain</TableHead>
-                <TableHead>24h Vol</TableHead>
-                <TableHead>Holders</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Priority</TableHead>
-                <TableHead>Next Follow-up</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.map((l) => (
-                <TableRow key={l.id}>
-                  <TableCell className="font-medium">
-                    <div className="flex items-center gap-1.5">
-                      <Link href={`/listing-leads/${l.id}`} className="text-primary hover:underline">{l.projectName}</Link>
-                      {l.xUrl && (
-                        <a href={l.xUrl} target="_blank" rel="noreferrer" className="text-muted-foreground hover:text-primary">
-                          <ExternalLink className="size-3" />
-                        </a>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell className="font-mono text-xs">{l.tokenSymbol ?? "—"}</TableCell>
-                  <TableCell>{l.chain ?? "—"}</TableCell>
-                  <TableCell className="font-mono text-xs">{formatUsd(l.volume24hUsd)}</TableCell>
-                  <TableCell className="font-mono text-xs">{l.holderCount ?? "N/A"}</TableCell>
-                  <TableCell className="font-mono text-xs" title="Heuristic based on available data; not verified listing intent.">
-                    {(() => {
-                      const sc = scoreProspect({
-                        chain: l.chain,
-                        tokenAddress: l.contractAddress,
-                        projectName: l.projectName,
-                        tokenSymbol: l.tokenSymbol,
-                        websiteUrl: l.websiteUrl,
-                        xUrl: l.xUrl,
-                        telegramUrl: l.telegramUrl,
-                        discordUrl: l.discordUrl,
-                        sourceUrl: l.sourceUrl,
-                        volume24hUsd: l.volume24hUsd,
-                        liquidityUsd: null,
-                        marketCap: null,
-                        marketCapSource: null,
-                        priceUsd: null,
-                        description: null,
-                      });
-                      return `${sc.score} · ${sc.label}`;
-                    })()}
-                  </TableCell>
-                  <TableCell>
-                    <StatusBadge status={l.listingStatus} label={listingLeadStatusLabel(l.listingStatus)} />
-                  </TableCell>
-                  <TableCell className="font-mono text-xs">{l.priority}</TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
-                    {l.nextFollowUpAt ? (
-                      <span className={followUpBucket(l.nextFollowUpAt) === "overdue" ? "text-destructive font-semibold" : followUpBucket(l.nextFollowUpAt) === "today" ? "text-amber-500 font-semibold" : ""}>
-                        {new Date(l.nextFollowUpAt).toLocaleDateString()}
-                      </span>
-                    ) : "—"}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon-xs"
-                        onClick={() => { setEditing(l); setOpen(true); }}
-                      >
-                        <Pencil className="size-3.5" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon-xs"
-                        onClick={() => handleDelete(l.id)}
-                      >
-                        <Trash2 className="size-3.5 text-destructive" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          {filtered.map((l) => (
+            <div key={l.id} className="rounded-lg border border-border/80 bg-card p-4 space-y-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <Link href={`/listing-leads/${l.id}`} className="text-primary hover:underline font-medium">{l.projectName}</Link>
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <span className="font-mono">{l.tokenSymbol ?? "—"}</span>
+                    <span>{l.chain ?? "—"}</span>
+                  </div>
+                </div>
+                <div className="flex gap-1">
+                  <Button variant="ghost" size="icon-xs" onClick={() => { setEditing(l); setOpen(true); }}>
+                    <Pencil className="size-3.5" />
+                  </Button>
+                  <Button variant="ghost" size="icon-xs" onClick={() => handleDelete(l.id)}>
+                    <Trash2 className="size-3.5 text-destructive" />
+                  </Button>
+                </div>
+              </div>
+              <div className="text-xs text-muted-foreground break-all">
+                {l.contractAddress ?? "—"}
+                {l.contractAddress && (
+                  <button className="ml-2 text-primary" onClick={() => navigator.clipboard.writeText(l.contractAddress!)}>
+                    Copy
+                  </button>
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div>Vol: {formatUsd(l.volume24hUsd)}</div>
+                <div>Holders: {l.holderCount ?? "N/A"}</div>
+                <div>Priority: {l.priority}</div>
+                <div>Follow-up: {l.nextFollowUpAt ? new Date(l.nextFollowUpAt).toLocaleDateString() : "—"}</div>
+              </div>
+              <div className="text-xs">
+                Score: {(() => {
+                  const sc = scoreProspect({
+                    chain: l.chain,
+                    tokenAddress: l.contractAddress,
+                    projectName: l.projectName,
+                    tokenSymbol: l.tokenSymbol,
+                    websiteUrl: l.websiteUrl,
+                    xUrl: l.xUrl,
+                    telegramUrl: l.telegramUrl,
+                    discordUrl: l.discordUrl,
+                    sourceUrl: l.sourceUrl,
+                    volume24hUsd: l.volume24hUsd,
+                    liquidityUsd: null,
+                    marketCap: null,
+                    marketCapSource: null,
+                    priceUsd: null,
+                    description: null,
+                  });
+                  return `${sc.score} · ${sc.label}`;
+                })()}
+              </div>
+              <div className="flex items-center gap-2">
+                <StatusBadge status={l.listingStatus} label={listingLeadStatusLabel(l.listingStatus)} />
+                {l.xUrl && <a href={l.xUrl} target="_blank" rel="noreferrer" className="text-muted-foreground hover:text-primary"><ExternalLink className="size-3" /></a>}
+                {l.websiteUrl && <a href={l.websiteUrl} target="_blank" rel="noreferrer" className="text-xs text-primary">Website</a>}
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>
