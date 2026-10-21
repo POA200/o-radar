@@ -48,12 +48,13 @@ const listingLeadSchema = z.object({
 export type ListingLeadInput = z.infer<typeof listingLeadSchema>;
 
 export async function createListingLead(input: ListingLeadInput) {
-  await requireOnboardedUser();
+  const user = await requireOnboardedUser();
   const data = listingLeadSchema.parse(input);
   let created;
   try {
     created = await prisma.listingLead.create({
     data: {
+      userId: user.id,
       projectName: data.projectName,
       tokenSymbol: data.tokenSymbol || null,
       chain: data.chain || null,
@@ -88,11 +89,14 @@ export async function createListingLead(input: ListingLeadInput) {
 }
 
 export async function updateListingLead(id: string, input: ListingLeadInput) {
-  await requireOnboardedUser();
+  const user = await requireOnboardedUser();
   const data = listingLeadSchema.parse(input);
+  const owned = await prisma.listingLead.findFirst({ where: { id, userId: user.id } });
+  if (!owned) throw new Error("Not found");
   const updated = await prisma.listingLead.update({
     where: { id },
     data: {
+      userId: user.id,
       projectName: data.projectName,
       tokenSymbol: data.tokenSymbol || null,
       chain: data.chain || null,
@@ -120,8 +124,8 @@ export async function updateListingLead(id: string, input: ListingLeadInput) {
 }
 
 export async function deleteListingLead(id: string) {
-  await requireOnboardedUser();
-  await prisma.listingLead.delete({ where: { id } });
+  const user = await requireOnboardedUser();
+  await prisma.listingLead.deleteMany({ where: { id, userId: user.id } });
   revalidatePath("/listing-leads");
 }
 
@@ -205,7 +209,7 @@ export async function discoverDexScreener(params: {
   minVolume?: number;
   minLiquidity?: number;
 }): Promise<DexScreenerResult[]> {
-  await requireOnboardedUser();
+  const user = await requireOnboardedUser();
 
   const results: DexScreenerResult[] = [];
   const seen = new Set<string>();
@@ -403,7 +407,7 @@ export async function discoverDexScreener(params: {
   }
 
   // Normalize keys and mark already-saved leads.
-  const existing = await prisma.listingLead.findMany({ select: { chain: true, contractAddress: true } });
+  const existing = await prisma.listingLead.findMany({ where: { userId: user.id }, select: { chain: true, contractAddress: true } });
   const existingKeys = new Set(existing.map((e) => leadKey(e.chain, e.contractAddress)));
   const normalized = results.map((r) => ({
     ...r,
@@ -446,7 +450,7 @@ export async function discoverGeckoTerminal(params: {
   minVolume?: number;
   minLiquidity?: number;
 }): Promise<DexScreenerResult[]> {
-  await requireOnboardedUser();
+  const user = await requireOnboardedUser();
 
   const results: DexScreenerResult[] = [];
   const seen = new Set<string>();
@@ -596,7 +600,7 @@ export async function discoverGeckoTerminal(params: {
   }
 
   // Normalize keys and mark already-saved leads.
-  const existing = await prisma.listingLead.findMany({ select: { chain: true, contractAddress: true } });
+  const existing = await prisma.listingLead.findMany({ where: { userId: user.id }, select: { chain: true, contractAddress: true } });
   const existingKeys = new Set(existing.map((e) => leadKey(e.chain, e.contractAddress)));
   const normalized = results.map((r) => ({
     ...r,
@@ -788,8 +792,8 @@ const COINGECKO_PLATFORMS: Record<string, string> = {
 };
 
 export async function enrichListingLeadWithCoinGecko(id: string): Promise<{ added: string[]; already: string[]; matched: boolean; error?: string }> {
-  await requireOnboardedUser();
-  const lead = await prisma.listingLead.findUnique({ where: { id } });
+  const user = await requireOnboardedUser();
+  const lead = await prisma.listingLead.findFirst({ where: { id, userId: user.id } });
   if (!lead) throw new Error("Lead not found");
   const chain = normalizeChain(lead.chain);
   const addr = normalizeAddress(lead.contractAddress);
@@ -854,7 +858,7 @@ export async function discoverListingLeads(params: {
   hasWebsite?: boolean;
   hasSocial?: boolean;
 }): Promise<{ results: DexScreenerResult[]; stats: { dex: { fetched: number }; gecko: { fetched: number }; rejected: number; unknownAge: number; unknownLiquidity: number; duplicates: number } }> {
-  await requireOnboardedUser();
+  const user = await requireOnboardedUser();
   const [dexRes, geckoRes] = await Promise.allSettled([
     discoverDexScreener({ source: params.source === "search" ? "search" : "profiles", query: params.query, chain: params.chain, minVolume: params.minVolume, minLiquidity: params.minLiquidity }),
     discoverGeckoTerminal({ source: params.source === "search" ? "search" : "new_pools", query: params.query, network: params.network ?? params.chain, minVolume: params.minVolume, minLiquidity: params.minLiquidity }),
@@ -909,7 +913,7 @@ export async function discoverListingLeads(params: {
     merged.push(best as DexScreenerResult);
   }
 
-  const existing = await prisma.listingLead.findMany({ select: { chain: true, contractAddress: true } });
+  const existing = await prisma.listingLead.findMany({ where: { userId: user.id }, select: { chain: true, contractAddress: true } });
   const existingKeys = new Set(existing.map((e) => leadKey(e.chain, e.contractAddress)));
   const normalized = merged.map((r) => ({
     ...r,

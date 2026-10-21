@@ -21,7 +21,7 @@ export default async function PotentialClientsPage({
   const source = typeof params.source === "string" ? params.source : "all";
   const q = typeof params.q === "string" ? params.q.trim().toLowerCase() : "";
 
-  const leads = await prisma.listingLead.findMany({ orderBy: [{ priority: "desc" }, { updatedAt: "desc" }] });
+  const leads = await prisma.listingLead.findMany({ where: { userId: user.id }, orderBy: [{ priority: "desc" }, { updatedAt: "desc" }] });
   const chains = Array.from(new Set(leads.map((l) => l.chain).filter(Boolean))) as string[];
   const sources = Array.from(new Set(leads.map((l) => l.discoverySource))) as string[];
 

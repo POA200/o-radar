@@ -24,7 +24,7 @@ export default async function ListingLeadResearchPage({
 }) {
   const user = await requireOnboardedUser();
   const { id } = await params;
-  const lead = await prisma.listingLead.findUnique({ where: { id } });
+  const lead = await prisma.listingLead.findFirst({ where: { id, userId: user.id } });
   if (!lead) notFound();
 
   const item = {

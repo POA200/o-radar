@@ -22,6 +22,7 @@ export default async function ListingLeadsPage() {
   let migrationPending = false;
   try {
     leads = await prisma.listingLead.findMany({
+      where: { userId: user.id },
       orderBy: [{ priority: "desc" }, { updatedAt: "desc" }],
     });
   } catch (e) {

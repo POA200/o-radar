@@ -22,6 +22,7 @@ model User {
   githubUrl          String?
   onboardingComplete Boolean   @default(false)
   leads              Lead[]
+  listingLeads       ListingLead[]
   accounts           Account[]
   sessions           Session[]
   createdAt          DateTime  @default(now())
@@ -212,6 +213,8 @@ enum ListingLeadStatus {
 
 model ListingLead {
   id               String                 @id @default(cuid())
+  userId           String?
+  user             User?                  @relation(fields: [userId], references: [id], onDelete: Cascade)
   projectName      String
   tokenSymbol      String?
   chain            String?
@@ -235,7 +238,8 @@ model ListingLead {
   createdAt        DateTime               @default(now())
   updatedAt        DateTime               @updatedAt
 
-  @@unique([chain, contractAddress])
+  @@unique([userId, chain, contractAddress])
+  @@index([userId])
   @@index([listingStatus])
   @@index([chain])
   @@index([priority])
