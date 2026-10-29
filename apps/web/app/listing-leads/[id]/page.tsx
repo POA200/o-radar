@@ -12,6 +12,7 @@ import { ListingLeadEditor } from "@/components/listing-lead/listing-lead-editor
 import { EnrichMetadataButton } from "@/components/listing-lead/enrich-metadata";
 import { CopySummaryButton } from "@/components/listing-lead/copy-summary-button";
 import { LiveMarketDataCard } from "@/components/listing-lead/live-market-data";
+import { ResearchPanel } from "@/components/listing-lead/research-panel";
 import { ListingLeadCrmForm } from "@/components/listing-lead/listing-lead-crm-form";
 import { OutreachEditor } from "@/components/listing-lead/outreach-editor";
 import { listingLeadStatusLabel } from "@/lib/listing-lead-status";
@@ -30,6 +31,7 @@ export default async function ListingLeadResearchPage({
   const { id } = await params;
   const lead = await prisma.listingLead.findFirst({ where: { id, userId: user.id } });
   if (!lead) notFound();
+  const reports = await prisma.listingLeadResearch.findMany({ where: { leadId: id, userId: user.id }, orderBy: { createdAt: "desc" } });
 
   const item = {
     id: lead.id,
