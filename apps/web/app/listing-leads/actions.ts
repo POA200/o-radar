@@ -1138,7 +1138,7 @@ export async function runListingLeadResearch(leadId: string, mode: "QUICK" | "DE
       mode: modeEnum as any,
       status: status as any,
       summary: parsed?.summary ?? null,
-      findings: parsed?.findings ?? { raw: evidenceLines },
+      findings: parsed?.findings ?? null,
       sources: parsed?.sources ?? (website ? [{ url: lead.websiteUrl, retrievedAt: new Date().toISOString() }] : []),
       confidence: typeof parsed?.confidence === "number" ? parsed.confidence : null,
     },
