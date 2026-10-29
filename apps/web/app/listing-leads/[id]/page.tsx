@@ -161,6 +161,7 @@ export default async function ListingLeadResearchPage({
               </CardContent>
             </Card>
 
+            <ResearchPanel leadId={item.id} reports={reports.map((r) => ({ id: r.id, mode: r.mode, status: r.status, summary: r.summary, findings: r.findings, sources: r.sources, confidence: r.confidence, createdAt: r.createdAt.toISOString() }))} />
             <LiveMarketDataCard chain={item.chain} contractAddress={item.contractAddress} lead={{ notes: item.notes, contactName: item.contactName, contactEmail: item.contactEmail, contactTelegram: item.contactTelegram, websiteUrl: item.websiteUrl, xUrl: item.xUrl, telegramUrl: item.telegramUrl, discordUrl: item.discordUrl, nextFollowUpAt: item.nextFollowUpAt, listingStatus: item.listingStatus }} />
             <ListingLeadCrmForm lead={item} />
             <OutreachEditor lead={item} />
