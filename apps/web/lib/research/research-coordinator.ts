@@ -29,7 +29,14 @@ export async function runResearchCoordinator(params: { user: AuthUser | null; le
   const market = await deps.fetchMarket(lead.chain, lead.contractAddress).catch(() => null);
 
   const evidence = pages.map((p: any) => p.text).join("\n").slice(0, mode === "DEEP" ? 12000 : 4000);
-  const ai = await deps.analyze(evidence, mode);
+  let ai = null;
+  const started = Date.now();
+  try {
+    ai = await deps.analyze(evidence, mode);
+  } catch (e) {
+    console.error("[research] AI request failed", { mode, elapsedMs: Date.now() - started, error: e instanceof Error ? e.message : String(e) });
+    ai = null;
+  }
 
   const validated = researchAiSchema.safeParse(ai);
   const parsed = validated.success ? validated.data : null;
