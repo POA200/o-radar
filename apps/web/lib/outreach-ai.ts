@@ -69,14 +69,14 @@ export function hasAiConfig() {
 export function generateOutreachFallback(e: OutreachEvidence): { normal: string; cold: string } {
   if (e.type === "listing") {
     const name = e.projectName || e.opportunityTitle || "your project";
-    const tokenPart = e.tokenSymbol ? ` (${e.tokenSymbol}${e.chain ? ` on ${e.chain}` : ""})` : e.chain ? ` on ${e.chain}` : "";
-    const websitePart = e.websiteUrl ? ` I came across ${e.websiteUrl}.` : "";
-    const reasonPart = e.whyInteresting ? ` ${e.whyInteresting}` : e.notes ? ` ${String(e.notes).slice(0, 200)}` : "";
+    const tokenPart = e.tokenSymbol ? ` (${e.tokenSymbol})` : "";
     const normal = `Hi ${name} team,
 
-I noticed ${name}${tokenPart}.${websitePart}${reasonPart} I'd be happy to help with CEX listing research, preparation, and coordination where it makes sense. If you're exploring listing opportunities, I'd be glad to discuss a practical approach based on your goals.`;
+I help crypto projects prepare for and coordinate CEX listings, including exchange research, listing requirements, and outreach coordination.
 
-    const cold = `Hi ${name} team — noticed ${name}${tokenPart}. If you're considering a CEX listing, I can help with research and coordination. Open to a quick chat?`;
+If you're considering a listing for ${name}${tokenPart}, I'd be glad to share a practical approach and see whether it's a fit. Would you be open to a quick chat?`;
+
+    const cold = `Hi ${name} team — are you exploring CEX listings? I help projects with exchange research and listing coordination. Open to a quick chat?`;
 
     return { normal: stripSignoff(normal), cold: stripSignoff(cold) };
   }
@@ -113,11 +113,12 @@ export async function generateOutreachAi(e: OutreachEvidence): Promise<{ normal:
 
 Rules:
 - Use ONLY the supplied evidence. Do not invent exchange relationships, guaranteed listings, partnerships, audits, contacts, trading metrics, or project achievements.
-- Focus on offering listing research, preparation, and coordination support. Do NOT mention applying for jobs, web development, graphic design, portfolios, or hiring.
-- Never claim guaranteed outcomes.
-- Be cautious if information is missing.
+- Write business outreach offering CEX listing research, preparation, and coordination support. Do NOT mention jobs, web development, graphic design, portfolios, or hiring.
+- Treat CRM notes as internal context only; never copy them verbatim or write a research report.
+- Never claim guaranteed outcomes or invent exchange relationships.
+- Use project name/token only when available; avoid awkward filler.
+- Normal pitch: 70-120 words. Cold pitch: 25-50 words.
 - Do not copy-paste the same text twice. They must be genuinely different.
-- Keep messages concise and professional. Avoid spammy language.
 - Do NOT add any sign-off like "Best," or "[Your Name]". End naturally.
 - Return JSON with keys "normal" and "cold".`
     : `You are an expert Web3 outreach writer. Generate TWO distinct pitches for the same prospect.
@@ -138,8 +139,8 @@ Rules:
 Evidence:
 ${evidence}
 
-Pitch 1 - "normal": Professional, personalized message offering CEX listing research/support/coordination. Reference specific details from evidence where they exist.
-Pitch 2 - "cold": Shorter, direct first-contact message suitable for X or Telegram DM. Different tone/structure from normal. Do not add sign-off.`
+Pitch 1 - "normal": 70-120 words, professional and commercially persuasive, offering CEX listing research/support/coordination. Use project/token naturally if available; no research summary; end with a low-friction question.
+Pitch 2 - "cold": 25-50 words, natural X/Telegram DM tone, asks about CEX listing plans and offers help; no sign-off.`
     : `Generate two pitches.
 
 Evidence:
