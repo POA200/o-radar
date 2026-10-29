@@ -23,10 +23,14 @@ export async function runResearchCoordinator(params: { user: AuthUser | null; le
   const { user, leadId, mode, deps } = params;
   if (!user || !user.id) throw new Error("Unauthenticated");
   const lead = await deps.findLead(leadId, user.id);
-  if (!lead) throw new Error("Lead not found");
+  if (!lead) { console.error("[research] lead not found", { leadId, userId: user.id }); throw new Error("Lead not found"); }
 
-  const pages = await deps.collectPages(lead.websiteUrl || "", mode, deps.fetcher);
-  const market = await deps.fetchMarket(lead.chain, lead.contractAddress).catch(() => null);
+  const collectStart = Date.now();
+  let pages: any[] = [];
+  try { pages = await deps.collectPages(lead.websiteUrl || "", mode, deps.fetcher); console.error("[research] collect ok", { mode, pages: pages.length, elapsedMs: Date.now() - collectStart }); }
+  catch (e) { console.error("[research] collect failed", { mode, elapsedMs: Date.now() - collectStart, error: e instanceof Error ? e.message : String(e) }); pages = []; }
+  const marketStart = Date.now();
+  const market = await deps.fetchMarket(lead.chain, lead.contractAddress).then((m: any) => { console.error("[research] market ok", { elapsedMs: Date.now() - marketStart }); return m; }).catch((e: any) => { console.error("[research] market failed", { elapsedMs: Date.now() - marketStart, error: e instanceof Error ? e.message : String(e) }); return null; });
 
   const evidence = pages.map((p: any) => p.text).join("\n").slice(0, mode === "DEEP" ? 12000 : 4000);
   let ai = null;
@@ -42,7 +46,10 @@ export async function runResearchCoordinator(params: { user: AuthUser | null; le
   const parsed = validated.success ? validated.data : null;
   const status = parsed ? "COMPLETED" : "FAILED";
 
-  const report = await deps.persist({
+  const persistStart = Date.now();
+  let report: any;
+  try {
+    report = await deps.persist({
     leadId: lead.id,
     userId: user.id,
     mode,
@@ -53,5 +60,7 @@ export async function runResearchCoordinator(params: { user: AuthUser | null; le
     confidence: typeof parsed?.confidence === "number" ? parsed.confidence : null,
   });
 
+  } catch (e) { console.error("[research] persist failed", { error: e instanceof Error ? e.message : String(e) }); throw e; }
+  console.error("[research] persist ok", { elapsedMs: Date.now() - persistStart });
   return report;
 }
