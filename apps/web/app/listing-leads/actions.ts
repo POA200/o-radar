@@ -1061,6 +1061,13 @@ export async function discoverListingLeads(params: {
 
 }
 
+const researchAiSchema = z.object({
+  summary: z.string().max(2000).nullable().optional(),
+  findings: z.record(z.any()).optional(),
+  sources: z.array(z.object({ url: z.string().max(500), retrievedAt: z.string().max(100).optional() })).max(50).optional(),
+  confidence: z.number().int().min(0).max(100).nullable().optional(),
+});
+
 export async function runListingLeadResearch(leadId: string, mode: "QUICK" | "DEEP") {
   const user = await requireOnboardedUser();
   const lead = await prisma.listingLead.findFirst({ where: { id: leadId, userId: user.id } });
@@ -1079,13 +1086,15 @@ export async function runListingLeadResearch(leadId: string, mode: "QUICK" | "DE
     market = null;
   }
 
+  const maxPages = modeEnum === "DEEP" ? 3 : 1;
+  const maxText = modeEnum === "DEEP" ? 12000 : 4000;
   const evidenceLines = [
     `Project: ${lead.projectName}`,
     `Token: ${lead.tokenSymbol ?? "unknown"}`,
     `Chain: ${lead.chain ?? "unknown"}`,
     `Website: ${lead.websiteUrl ?? "unknown"}`,
     website ? `Website title: ${website.title ?? "unknown"}` : "Website: not fetched",
-    website ? `Website text: ${website.text.slice(0, 4000)}` : "",
+    website ? `Website text: ${website.text.slice(0, maxText)}` : "",
     market ? `Market: ${JSON.stringify(market)}` : "Market: unavailable",
     `Notes: ${lead.notes ?? "none"}`,
   ].filter(Boolean).join("\n");
@@ -1111,7 +1120,8 @@ export async function runListingLeadResearch(leadId: string, mode: "QUICK" | "DE
         try {
           const match = content.match(/\{[\s\S]*\}/);
           parsed = match ? JSON.parse(match[0]) : JSON.parse(content);
-          if (parsed && parsed.summary) status = "COMPLETED";
+          const validated = researchAiSchema.safeParse(parsed);
+          if (validated.success) { parsed = validated.data; status = "COMPLETED"; } else { parsed = null; status = "FAILED"; }
         } catch {
           parsed = null;
         }
