@@ -171,7 +171,7 @@ Pitch 2 - "cold": Concise, compelling first-contact message for someone not cont
       const usingOpenRouter = !!process.env.OPENROUTER_API_KEY && !process.env.OPENAI_API_KEY;
       const key = process.env.OPENAI_API_KEY || process.env.OPENROUTER_API_KEY;
       const baseUrl = usingOpenRouter ? "https://openrouter.ai/api/v1" : (process.env.OPENAI_BASE_URL || "https://api.openai.com/v1");
-      const model = usingOpenRouter ? (process.env.OPENROUTER_MODEL || "google/gemma-3n-e4b-it:free") : (process.env.OPENAI_MODEL || "gpt-4o-mini");
+      const model = usingOpenRouter ? (process.env.OPENROUTER_MODEL || "google/gemma-4-26b-a4b-it:free") : (process.env.OPENAI_MODEL || "gpt-4o-mini");
       const res = await fetch(`${baseUrl}/chat/completions`, {
         method: "POST",
         headers: {
