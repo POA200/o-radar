@@ -54,7 +54,7 @@ export async function runResearchCoordinator(params: { user: AuthUser | null; le
     userId: user.id,
     mode,
     status,
-    summary: parsed?.summary ?? null,
+    summary: parsed?.summary ?? "Research could not be completed. The website may be unavailable and no AI analysis result was produced.",
     findings: parsed?.findings ?? null,
     sources: parsed?.sources ?? pages.map((p: any) => ({ url: p.url, retrievedAt: new Date().toISOString() })),
     confidence: typeof parsed?.confidence === "number" ? parsed.confidence : null,
