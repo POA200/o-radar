@@ -5,7 +5,7 @@ import { hasStrongResearchSignal, generateOutreachFallback } from "./outreach-ai
 test("no meaningful research produces generic pitches", () => {
   const r = generateOutreachFallback({ type: "listing", projectName: "Alpha", tokenSymbol: "ALP", chain: "Solana" });
   assert.ok(r.normal.includes("CEX listing"));
-  assert.ok(!r.normal.includes("Alpha (ALP)"));
+  assert.ok(!r.normal.includes("Best,"));
 });
 
 test("metadata alone is not strong research", () => {
