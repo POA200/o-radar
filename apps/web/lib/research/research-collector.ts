@@ -36,7 +36,8 @@ export async function collectPages(websiteUrl: string, mode: ResearchMode, fetch
     if (res.error) return;
     pages.push({ url: res.finalUrl, title: res.title, text: res.text.slice(0, limits.maxTextPerPage) });
     if (pages.length < limits.maxPages) {
-      const origin = new URL(res.finalUrl).origin;
+      let origin = "";
+      try { origin = new URL(res.finalUrl).origin; } catch { origin = ""; }
       const regex = /href=["']([^"']+)["']/gi;
       let m;
       const candidates: string[] = [];
