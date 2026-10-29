@@ -15,6 +15,8 @@ export type OutreachEvidence = {
   sourceUrl?: string | null;
   notes?: string | null;
   whyInteresting?: string | null;
+  nextAction?: string | null;
+  outcome?: string | null;
   opportunityDescription?: string | null;
   opportunityEvidence?: string | null;
   userNiche?: string | null;
@@ -28,6 +30,16 @@ function stripSignoff(s: string): string {
   if (!s) return s;
   let out = s.replace(/\n\s*Best,?\s*\n\s*\[Your Name\]\s*$/i, "").replace(/\n\s*Best,?\s*$/i, "").replace(/\[Your Name\]\s*$/i, "");
   return out.trim();
+}
+
+
+
+export function hasStrongResearchSignal(e: OutreachEvidence): boolean {
+  const candidates = [e.whyInteresting, e.notes, e.nextAction, e.outcome].filter(Boolean).map((x) => String(x).trim());
+  for (const c of candidates) {
+    if (c.length >= 20 && !/^(n\/a|none|na|tbd)$/i.test(c)) return true;
+  }
+  return false;
 }
 
 function buildEvidenceBlock(e: OutreachEvidence) {
