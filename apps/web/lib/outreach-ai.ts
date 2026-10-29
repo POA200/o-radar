@@ -115,6 +115,11 @@ Rules:
 - Use ONLY the supplied evidence. Do not invent exchange relationships, guaranteed listings, partnerships, audits, contacts, trading metrics, or project achievements.
 - Write business outreach offering CEX listing research, preparation, and coordination support. Do NOT mention jobs, web development, graphic design, portfolios, or hiring.
 - Treat CRM notes as internal context only; never copy them verbatim or write a research report.
+- Distinguish generic outreach from research-driven outreach: use research-driven personalization only when the saved research contains a specific, relevant, verifiable signal.
+- A project name, token symbol, chain, website, generic description, or empty/default notes alone are not strong evidence.
+- Do not infer that a project needs listings, plans to expand, lacks exchange listings, or has an upcoming milestone unless the supplied research supports it.
+- If no strong signal exists, produce honest generic outreach rather than inventing a personalized hook.
+- If a signal exists, reference it naturally and briefly. Never imply independent research or verification that did not happen.
 - Never claim guaranteed outcomes or invent exchange relationships.
 - Use project name/token only when available; avoid awkward filler.
 - Normal pitch: 70-120 words. Cold pitch: 25-50 words.
@@ -139,8 +144,8 @@ Rules:
 Evidence:
 ${evidence}
 
-Pitch 1 - "normal": 70-120 words, professional and commercially persuasive, offering CEX listing research/support/coordination. Use project/token naturally if available; no research summary; end with a low-friction question.
-Pitch 2 - "cold": 25-50 words, natural X/Telegram DM tone, asks about CEX listing plans and offers help; no sign-off.`
+Pitch 1 - "normal": 70-120 words. Decide whether research-driven personalization is justified based on the supplied evidence. If not, write honest generic outreach. If yes, reference the specific signal naturally and briefly. Offer CEX listing research/support/coordination. End with a low-friction question.
+Pitch 2 - "cold": 25-50 words. Same personalization decision. Natural X/Telegram DM tone. Ask about CEX listing plans and offer help. No sign-off.`
     : `Generate two pitches.
 
 Evidence:
