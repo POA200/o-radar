@@ -1074,10 +1074,52 @@ export async function runListingLeadResearch(leadId: string, mode: "QUICK" | "DE
   if (!lead) throw new Error("Lead not found");
   const modeEnum = mode === "DEEP" ? "DEEP" : "QUICK";
 
-  let website = null as Awaited<ReturnType<typeof fetchWebsite>> | null;
-  if (lead.websiteUrl) {
-    website = await fetchWebsite(lead.websiteUrl);
+  const maxPages = modeEnum === "DEEP" ? 10 : 3;
+  const maxTextPerPage = modeEnum === "DEEP" ? 4000 : 1500;
+  const totalTextLimit = modeEnum === "DEEP" ? 12000 : 4000;
+  const relevantKeywords = modeEnum === "DEEP"
+    ? ["about","team","tokenomics","roadmap","docs","documentation","ecosystem","partners","announcement","contact"]
+    : ["about","token","exchange","listing","contact"];
+  const visited = new Set<string>();
+  const pages: { url: string; title: string | null; text: string }[] = [];
+  async function collect(url: string) {
+    if (visited.size >= maxPages) return;
+    let normalized: string;
+    try { normalized = new URL(url).toString(); } catch { return; }
+    if (visited.has(normalized)) return;
+    visited.add(normalized);
+    const res = await fetchWebsite(normalized);
+    if (res.error) return;
+    pages.push({ url: res.finalUrl, title: res.title, text: res.text.slice(0, maxTextPerPage) });
+    if (pages.length < maxPages) {
+      const origin = new URL(res.finalUrl).origin;
+      const regex = /href=["']([^"']+)["']/gi;
+      let m;
+      const candidates: string[] = [];
+      while ((m = regex.exec(res.html)) !== null) {
+        try {
+          const u = new URL(m[1]!, res.finalUrl);
+          if (u.origin === origin && u.protocol.startsWith("http")) {
+            u.hash = "";
+            const href = u.toString();
+            if (!visited.has(href)) {
+              const lower = (u.pathname + " " + (u.search || "")).toLowerCase();
+              if (relevantKeywords.some((k) => lower.includes(k))) candidates.push(href);
+            }
+          }
+        } catch {}
+        if (candidates.length >= 20) break;
+      }
+      for (const c of candidates) {
+        if (visited.size >= maxPages) break;
+        await collect(c);
+      }
+    }
   }
+  if (lead.websiteUrl) {
+    await collect(lead.websiteUrl);
+  }
+  const website = pages.length && pages[0] ? { finalUrl: pages[0].url, title: pages[0].title, text: pages.map((p) => p.text).join("\n").slice(0, totalTextLimit), html: "" } : null;
 
   let market = null as any;
   try {
@@ -1086,7 +1128,6 @@ export async function runListingLeadResearch(leadId: string, mode: "QUICK" | "DE
     market = null;
   }
 
-  const maxPages = modeEnum === "DEEP" ? 3 : 1;
   const maxText = modeEnum === "DEEP" ? 12000 : 4000;
   const evidenceLines = [
     `Project: ${lead.projectName}`,
@@ -1139,7 +1180,7 @@ export async function runListingLeadResearch(leadId: string, mode: "QUICK" | "DE
       status: status as any,
       summary: parsed?.summary ?? null,
       findings: parsed?.findings ?? null,
-      sources: parsed?.sources ?? (website ? [{ url: lead.websiteUrl, retrievedAt: new Date().toISOString() }] : []),
+      sources: parsed?.sources ?? pages.map((p) => ({ url: p.url, retrievedAt: new Date().toISOString() })),
       confidence: typeof parsed?.confidence === "number" ? parsed.confidence : null,
     },
   });

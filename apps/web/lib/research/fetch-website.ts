@@ -5,6 +5,7 @@ export type FetchWebsiteResult = {
   finalUrl: string;
   title: string | null;
   text: string;
+  html: string;
   retrievedAt: string;
   canonicalUrl: string | null;
   error: string | null;
@@ -53,7 +54,7 @@ async function validateUrl(url: string) {
   return parsed;
 }
 
-async function fetchWithLimits(url: URL): Promise<{ finalUrl: string; title: string | null; text: string; canonicalUrl: string | null }> {
+async function fetchWithLimits(url: URL): Promise<{ finalUrl: string; title: string | null; text: string; html: string; canonicalUrl: string | null }> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
@@ -100,7 +101,7 @@ async function fetchWithLimits(url: URL): Promise<{ finalUrl: string; title: str
       // decode basic entities
       clean = clean.replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"');
       clean = clean.replace(/\s+/g, " ").trim().slice(0, MAX_TEXT);
-      return { finalUrl: current.toString(), title, text: clean, canonicalUrl };
+      return { finalUrl: current.toString(), title, text: clean, html: html.slice(0, 200000), canonicalUrl };
     }
     throw new Error("Too many redirects");
   } finally {
@@ -115,6 +116,6 @@ export async function fetchWebsite(url: string): Promise<FetchWebsiteResult> {
     const result = await fetchWithLimits(validated);
     return { ...result, retrievedAt, error: null };
   } catch (e) {
-    return { finalUrl: url, title: null, text: "", retrievedAt, canonicalUrl: null, error: e instanceof Error ? e.message : String(e) };
+    return { finalUrl: url, title: null, text: "", html: "", retrievedAt, canonicalUrl: null, error: e instanceof Error ? e.message : String(e) };
   }
 }
