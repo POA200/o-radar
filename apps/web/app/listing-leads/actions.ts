@@ -129,9 +129,143 @@ export async function deleteListingLead(id: string) {
   revalidatePath("/listing-leads");
 }
 
-// ===== DEX Screener discovery =====
+import { generateOutreachAi, type OutreachEvidence } from "@/lib/outreach-ai";
+import { prisma as db } from "@o-radar/db";
 
+function stripSignoff(s: string): string {
+  if (!s) return s;
+  return s.replace(/\n\s*Best,?\s*\n\s*\[Your Name\]\s*$/i, "").replace(/\n\s*Best,?\s*$/i, "").replace(/\[Your Name\]\s*$/i, "").trim();
+}
 
+export async function updateListingLeadCrmFields(
+  id: string,
+  fields: {
+    notes?: string | null;
+    whyInteresting?: string | null;
+    nextAction?: string | null;
+    outcome?: string | null;
+    priority?: number | null;
+    listingStatus?: ListingLeadInput["listingStatus"];
+    nextFollowUpAt?: string | null;
+    lastContactedAt?: string | null;
+    contactName?: string | null;
+    contactEmail?: string | null;
+    contactTelegram?: string | null;
+  }
+) {
+  const user = await requireOnboardedUser();
+  const owned = await prisma.listingLead.findFirst({ where: { id, userId: user.id } });
+  if (!owned) throw new Error("Not found");
+  const data: any = {};
+  if ("notes" in fields) data.notes = fields.notes === null || fields.notes === "" ? null : fields.notes;
+  if ("whyInteresting" in fields) data.whyInteresting = fields.whyInteresting === null || fields.whyInteresting === "" ? null : fields.whyInteresting;
+  if ("nextAction" in fields) data.nextAction = fields.nextAction === null || fields.nextAction === "" ? null : fields.nextAction;
+  if ("outcome" in fields) data.outcome = fields.outcome === null || fields.outcome === "" ? null : fields.outcome;
+  if ("priority" in fields && fields.priority !== undefined && fields.priority !== null) data.priority = Number(fields.priority);
+  if ("listingStatus" in fields && fields.listingStatus) data.listingStatus = fields.listingStatus;
+  if ("nextFollowUpAt" in fields) data.nextFollowUpAt = fields.nextFollowUpAt ? new Date(fields.nextFollowUpAt) : null;
+  if ("lastContactedAt" in fields) data.lastContactedAt = fields.lastContactedAt ? new Date(fields.lastContactedAt) : null;
+  if ("contactName" in fields) data.contactName = fields.contactName === null || fields.contactName === "" ? null : fields.contactName;
+  if ("contactEmail" in fields) data.contactEmail = fields.contactEmail === null || fields.contactEmail === "" ? null : fields.contactEmail;
+  if ("contactTelegram" in fields) data.contactTelegram = fields.contactTelegram === null || fields.contactTelegram === "" ? null : fields.contactTelegram;
+  await prisma.listingLead.update({ where: { id }, data });
+  revalidatePath("/listing-leads");
+  revalidatePath(`/listing-leads/${id}`);
+  return { ok: true };
+}
+
+export async function generateListingLeadPitches(id: string, force = false) {
+  const user = await requireOnboardedUser();
+  const lead = await db.listingLead.findFirst({ where: { id, userId: user.id } });
+  if (!lead) throw new Error("Not found");
+
+  if (!force && lead.outreachNormal && lead.outreachCold) {
+    return { normal: stripSignoff(lead.outreachNormal), cold: stripSignoff(lead.outreachCold), cached: true, usedAi: false };
+  }
+
+  const evidence: OutreachEvidence = {
+    type: "listing",
+    projectName: lead.projectName,
+    tokenSymbol: lead.tokenSymbol,
+    chain: lead.chain,
+    websiteUrl: lead.websiteUrl,
+    xUrl: lead.xUrl,
+    telegramUrl: lead.telegramUrl,
+    discordUrl: lead.discordUrl,
+    contractAddress: lead.contractAddress,
+    source: lead.discoverySource,
+    sourceUrl: lead.sourceUrl,
+    notes: lead.notes,
+    whyInteresting: (lead as any).whyInteresting,
+    opportunityEvidence: (lead as any).nextAction || (lead as any).outcome ? `Next action: ${(lead as any).nextAction || ""}\nOutcome: ${(lead as any).outcome || ""}` : null,
+  };
+
+  const res = await generateOutreachAi(evidence);
+  const normal = stripSignoff(res.normal);
+  const cold = stripSignoff(res.cold);
+  await db.listingLead.update({
+    where: { id },
+    data: {
+      outreachNormal: normal,
+      outreachCold: cold,
+      outreachGeneratedAt: new Date(),
+    },
+  });
+  revalidatePath("/listing-leads");
+  revalidatePath(`/listing-leads/${id}`);
+  return { normal, cold, cached: false, usedAi: res.usedAi, error: res.error };
+}
+
+export async function saveListingLeadPitches(id: string, normal: string, cold: string) {
+  const user = await requireOnboardedUser();
+  const owned = await db.listingLead.findFirst({ where: { id, userId: user.id } });
+  if (!owned) throw new Error("Not found");
+  await db.listingLead.update({
+    where: { id },
+    data: {
+      outreachNormal: stripSignoff(normal || "") || null,
+      outreachCold: stripSignoff(cold || "") || null,
+    },
+  });
+  revalidatePath("/listing-leads");
+  revalidatePath(`/listing-leads/${id}`);
+  return { ok: true };
+}
+
+const followUpDaysDefault = 3;
+function addDays(d: Date, days: number) {
+  const nd = new Date(d);
+  nd.setDate(nd.getDate() + days);
+  return nd;
+}
+
+const listingStatusSchema = z.enum(["DISCOVERED","RESEARCHING","QUALIFIED","CONTACTED","REPLIED","IN_PROGRESS","WON","LOST","CONVERTED","ARCHIVED"]);
+export async function updateListingLeadStatusWithAutomation(id: string, status: ListingLeadInput["listingStatus"]) {
+  const user = await requireOnboardedUser();
+  const parsed = listingStatusSchema.safeParse(status);
+  if (!parsed.success) throw new Error("Invalid status");
+  const existing = await db.listingLead.findFirst({ where: { id, userId: user.id } });
+  if (!existing) throw new Error("Not found");
+
+  const data: any = { listingStatus: parsed.data };
+  if (status === "CONTACTED") {
+    data.lastContactedAt = new Date();
+    if (!existing.nextFollowUpAt) {
+      data.nextFollowUpAt = addDays(new Date(), followUpDaysDefault);
+    }
+  }
+
+  await db.listingLead.update({ where: { id }, data });
+
+  if (status === "QUALIFIED" && !existing.outreachNormal && !existing.outreachCold) {
+    try {
+      await generateListingLeadPitches(id, false);
+    } catch {}
+  }
+
+  revalidatePath("/listing-leads");
+  revalidatePath(`/listing-leads/${id}`);
+}
 export type DexScreenerResult = {
   chain: string | null;
   tokenAddress: string | null;

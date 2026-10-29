@@ -174,11 +174,14 @@ export async function archiveOpportunity(opportunityId: string) {
   revalidatePath("/saved");
 }
 
+const leadStatusSchema = z.enum(["DISCOVERED","RESEARCHING","QUALIFIED","READY_TO_CONTACT","CONTACTED","REPLIED","APPLIED","IN_PROGRESS","WON","LOST","CONVERTED","ARCHIVED"]);
 export async function updateLeadStatus(leadId: string, status: LeadStatus, appliedAt?: string | null) {
   const user = await requireOnboardedUser();
+  const parsedStatus = leadStatusSchema.safeParse(status);
+  if (!parsedStatus.success) throw new Error("Invalid status");
   const existing = await prisma.lead.findFirst({ where: { id: leadId, userId: user.id }, select: { appliedAt: true } });
-  if (!existing) return;
-  const data: { status: LeadStatus; lastContactedAt?: Date; appliedAt?: Date | null } = { status };
+  if (!existing) throw new Error("Lead not found");
+  const data: { status: LeadStatus; lastContactedAt?: Date; appliedAt?: Date | null } = { status: parsedStatus.data };
   if (status === "CONTACTED") data.lastContactedAt = new Date();
   if (appliedAt !== undefined) {
     data.appliedAt = appliedAt ? new Date(appliedAt) : null;
@@ -272,4 +275,167 @@ export async function updateUserProfile(formData: FormData) {
 
 export async function handleSignOut() {
   await signOut({ redirectTo: "/signin" });
+}
+export async function updateLeadCrmFields(
+  leadId: string,
+  fields: {
+    notes?: string | null;
+    whyInteresting?: string | null;
+    nextAction?: string | null;
+    outcome?: string | null;
+    priority?: number | null;
+    nextFollowUpAt?: string | null;
+  }
+) {
+  const user = await requireOnboardedUser();
+  const data: any = {};
+  if ("notes" in fields) data.notes = fields.notes === null || fields.notes === "" ? null : fields.notes;
+  if ("whyInteresting" in fields) data.whyInteresting = fields.whyInteresting === null || fields.whyInteresting === "" ? null : fields.whyInteresting;
+  if ("nextAction" in fields) data.nextAction = fields.nextAction === null || fields.nextAction === "" ? null : fields.nextAction;
+  if ("outcome" in fields) data.outcome = fields.outcome === null || fields.outcome === "" ? null : fields.outcome;
+  if ("priority" in fields && fields.priority !== undefined && fields.priority !== null) data.priority = Number(fields.priority);
+  if ("nextFollowUpAt" in fields) data.nextFollowUpAt = fields.nextFollowUpAt ? new Date(fields.nextFollowUpAt) : null;
+  await prisma.lead.updateMany({
+    where: { id: leadId, userId: user.id },
+    data,
+  });
+  revalidatePath("/leads");
+  revalidatePath("/saved");
+}
+
+import { generateOutreachAi, type OutreachEvidence } from "@/lib/outreach-ai";
+import { prisma as db } from "@o-radar/db";
+
+function addDays(d: Date, days: number) {
+  const nd = new Date(d);
+  nd.setDate(nd.getDate() + days);
+  return nd;
+}
+
+const followUpDaysDefault = 3;
+
+export async function generateLeadPitches(leadId: string, force = false) {
+  const user = await requireOnboardedUser();
+  const lead = await db.lead.findFirst({
+    where: { id: leadId, userId: user.id },
+    include: { opportunity: { include: { evidences: { orderBy: { capturedAt: "desc" }, take: 3 } } } },
+  });
+  if (!lead) throw new Error("Not found");
+
+  if (!force && lead.outreachNormal && lead.outreachCold) {
+    return { normal: lead.outreachNormal, cold: lead.outreachCold, cached: true, usedAi: false };
+  }
+
+  const evidenceParts: string[] = [];
+  if ((lead.opportunity as any)?.description) evidenceParts.push((lead.opportunity as any).description);
+  if ((lead.opportunity as any)?.content) evidenceParts.push((lead.opportunity as any).content);
+  for (const ev of lead.opportunity?.evidences || []) {
+    try {
+      const p = (ev as any).rawPayload;
+      if (p && typeof p === "object") {
+        const s = (p as any).snippet || (p as any).body || (p as any).text;
+        if (typeof s === "string") evidenceParts.push(s);
+      }
+    } catch {}
+  }
+
+  const evidence: OutreachEvidence = {
+    type: "lead",
+    opportunityTitle: lead.opportunity?.title,
+    source: lead.opportunity?.source,
+    sourceUrl: lead.opportunity?.url,
+    opportunityDescription: (lead.opportunity as any)?.description || (lead.opportunity as any)?.content,
+    opportunityEvidence: evidenceParts.join("\n\n").slice(0, 2000) || null,
+    notes: lead.notes,
+    whyInteresting: (lead as any).whyInteresting,
+    userNiche: user.niche,
+    userSkills: user.skills,
+    userPortfolio: user.portfolioUrl,
+    userGithub: user.githubUrl,
+    userCv: user.cvText,
+  };
+
+  const res = await generateOutreachAi(evidence);
+  await db.lead.update({
+    where: { id: leadId },
+    data: {
+      outreachNormal: res.normal,
+      outreachCold: res.cold,
+      outreachGeneratedAt: new Date(),
+    },
+  });
+  revalidatePath("/leads");
+  revalidatePath("/saved");
+  return { normal: res.normal, cold: res.cold, cached: false, usedAi: res.usedAi, error: res.error };
+}
+
+export async function saveLeadPitches(leadId: string, normal: string, cold: string) {
+  const user = await requireOnboardedUser();
+  await db.lead.updateMany({
+    where: { id: leadId, userId: user.id },
+    data: {
+      outreachNormal: normal?.trim() || null,
+      outreachCold: cold?.trim() || null,
+    },
+  });
+  revalidatePath("/leads");
+  revalidatePath("/saved");
+  return { ok: true };
+}
+
+const leadStatusSchema2 = z.enum(["DISCOVERED","RESEARCHING","QUALIFIED","READY_TO_CONTACT","CONTACTED","REPLIED","APPLIED","IN_PROGRESS","WON","LOST","CONVERTED","ARCHIVED"]);
+export async function updateLeadStatusWithAutomation(leadId: string, status: LeadStatus, appliedAt?: string | null) {
+  const user = await requireOnboardedUser();
+  const parsedStatus = leadStatusSchema2.safeParse(status);
+  if (!parsedStatus.success) throw new Error("Invalid status");
+  const existing = await db.lead.findFirst({ where: { id: leadId, userId: user.id } });
+  if (!existing) throw new Error("Lead not found");
+
+  const data: any = { status: parsedStatus.data };
+  if (status === "CONTACTED") {
+    data.lastContactedAt = new Date();
+    if (!existing.nextFollowUpAt) {
+      data.nextFollowUpAt = addDays(new Date(), followUpDaysDefault);
+    }
+  }
+  if (appliedAt !== undefined) {
+    data.appliedAt = appliedAt ? new Date(appliedAt) : null;
+  } else if (status === "APPLIED" && existing.appliedAt === null) {
+    data.appliedAt = new Date();
+  }
+
+  await db.lead.update({ where: { id: leadId }, data });
+
+  if (status === "READY_TO_CONTACT" && !existing.outreachNormal && !existing.outreachCold) {
+    try {
+      await generateLeadPitches(leadId, false);
+    } catch {}
+  }
+
+  revalidatePath("/");
+  revalidatePath("/discover");
+  revalidatePath("/leads");
+  revalidatePath("/saved");
+}
+
+export async function updateLeadStatusWithAutomationZ(leadId: string, status: string) {
+  const user = await requireOnboardedUser();
+  const parsed = leadStatusSchema.safeParse(status);
+  if (!parsed.success) throw new Error("Invalid status");
+  const existing = await db.lead.findFirst({ where: { id: leadId, userId: user.id } });
+  if (!existing) throw new Error("Lead not found");
+  const data: any = { status: parsed.data };
+  if (status === "CONTACTED") {
+    data.lastContactedAt = new Date();
+    if (!existing.nextFollowUpAt) {
+      data.nextFollowUpAt = addDays(new Date(), followUpDaysDefault);
+    }
+  }
+  await db.lead.update({ where: { id: leadId }, data });
+  if (status === "READY_TO_CONTACT" && !existing.outreachNormal && !existing.outreachCold) {
+    try { await generateLeadPitches(leadId, false); } catch {}
+  }
+  revalidatePath("/leads");
+  revalidatePath("/saved");
+  return { ok: true };
 }

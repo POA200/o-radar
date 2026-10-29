@@ -178,6 +178,12 @@ export function ModernLeadTable({ leads }: LeadTableProps) {
             >
               Archived
             </TabsTrigger>
+            <TabsTrigger value="REPLIED" className="text-xs h-7 px-3 font-mono">
+              Awaiting reply
+            </TabsTrigger>
+            <TabsTrigger value="READY_TO_CONTACT" className="text-xs h-7 px-3 font-mono">
+              Ready for outreach
+            </TabsTrigger>
             <TabsTrigger value="all" className="text-xs h-7 px-3 font-mono">
               All
             </TabsTrigger>

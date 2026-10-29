@@ -10,10 +10,14 @@ import { Badge } from "@/components/ui/badge";
 import { requireOnboardedUser } from "../../../src/require-user";
 import { ListingLeadEditor } from "@/components/listing-lead/listing-lead-editor";
 import { EnrichMetadataButton } from "@/components/listing-lead/enrich-metadata";
+import { CopySummaryButton } from "@/components/listing-lead/copy-summary-button";
 import { LiveMarketDataCard } from "@/components/listing-lead/live-market-data";
+import { ListingLeadCrmForm } from "@/components/listing-lead/listing-lead-crm-form";
+import { OutreachEditor } from "@/components/listing-lead/outreach-editor";
 import { listingLeadStatusLabel } from "@/lib/listing-lead-status";
 import { scoreProspect } from "@/lib/prospect-score";
-import { ExternalLink, ArrowLeft, Copy } from "lucide-react";
+import { buildLeadSummary } from "@/lib/lead-crm";
+import { ExternalLink, ArrowLeft } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -47,6 +51,12 @@ export default async function ListingLeadResearchPage({
     contactEmail: lead.contactEmail,
     contactTelegram: lead.contactTelegram,
     notes: lead.notes,
+    whyInteresting: (lead as any).whyInteresting ?? null,
+    nextAction: (lead as any).nextAction ?? null,
+    outcome: (lead as any).outcome ?? null,
+    outreachNormal: (lead as any).outreachNormal ?? null,
+    outreachCold: (lead as any).outreachCold ?? null,
+    outreachGeneratedAt: (lead as any).outreachGeneratedAt?.toISOString() ?? null,
     lastContactedAt: lead.lastContactedAt?.toISOString() ?? null,
     nextFollowUpAt: lead.nextFollowUpAt?.toISOString() ?? null,
     createdAt: lead.createdAt.toISOString(),
@@ -98,6 +108,23 @@ export default async function ListingLeadResearchPage({
             <Badge variant="outline">Priority {item.priority}</Badge>
             <ListingLeadEditor lead={item} />
             <EnrichMetadataButton leadId={item.id} />
+            <CopySummaryButton text={buildLeadSummary({
+              projectName: item.projectName,
+              tokenSymbol: item.tokenSymbol,
+              chain: item.chain,
+              contractAddress: item.contractAddress,
+              websiteUrl: item.websiteUrl,
+              xUrl: item.xUrl,
+              telegramUrl: item.telegramUrl,
+              discordUrl: item.discordUrl,
+              listingStatus: item.listingStatus,
+              priority: item.priority,
+              nextFollowUpAt: item.nextFollowUpAt,
+              notes: item.notes,
+              whyInteresting: (item as any).whyInteresting,
+              nextAction: (item as any).nextAction,
+              outcome: (item as any).outcome,
+            })} />
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
@@ -133,23 +160,8 @@ export default async function ListingLeadResearchPage({
             </Card>
 
             <LiveMarketDataCard chain={item.chain} contractAddress={item.contractAddress} lead={{ notes: item.notes, contactName: item.contactName, contactEmail: item.contactEmail, contactTelegram: item.contactTelegram, websiteUrl: item.websiteUrl, xUrl: item.xUrl, telegramUrl: item.telegramUrl, discordUrl: item.discordUrl, nextFollowUpAt: item.nextFollowUpAt, listingStatus: item.listingStatus }} />
-            <Card>
-              <CardHeader><CardTitle className="text-sm">Research notes (user-maintained)</CardTitle></CardHeader>
-              <CardContent className="text-sm whitespace-pre-wrap">{item.notes || "No notes yet."}</CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader><CardTitle className="text-sm">Contact & outreach (user-maintained)</CardTitle></CardHeader>
-              <CardContent className="space-y-2 text-sm">
-                <div><span className="text-muted-foreground">Contact name:</span> {item.contactName ?? "—"}</div>
-                <div><span className="text-muted-foreground">Email:</span> {item.contactEmail ?? "—"}</div>
-                <div><span className="text-muted-foreground">Telegram:</span> {item.contactTelegram ?? "—"}</div>
-                <div><span className="text-muted-foreground">Status:</span> {listingLeadStatusLabel(item.listingStatus)}</div>
-                <div><span className="text-muted-foreground">Priority:</span> {item.priority}</div>
-                <div><span className="text-muted-foreground">Last contacted:</span> {item.lastContactedAt ? new Date(item.lastContactedAt).toLocaleDateString() : "—"}</div>
-                <div><span className="text-muted-foreground">Next follow-up:</span> {item.nextFollowUpAt ? new Date(item.nextFollowUpAt).toLocaleDateString() : "—"}</div>
-              </CardContent>
-            </Card>
+            <ListingLeadCrmForm lead={item} />
+            <OutreachEditor lead={item} />
           </div>
         </ResponsiveContainer>
       </div>
